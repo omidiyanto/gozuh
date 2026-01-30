@@ -1,0 +1,1 @@
+go build -ldflags="-s -w" -o gozuh.exe ./cmd/gozuh/main.go
