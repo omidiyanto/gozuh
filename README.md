@@ -1,76 +1,61 @@
-# GOZUH - Wazuh Agent Companion
-![Gozuh Logo](docs/images/logo-head.png)
-> **"Secure. Persistent. Automated."**
+<h1 align="center">🦊 GOZUH - The Ultimate Wazuh Agent Companion</h1>
 
-**Gozuh** is an enterprise-grade **Wazuh Agent Companion** built with Go. It serves as an intelligent wrapper and watchdog for the Wazuh Agent on Windows endpoints. It solves critical identity persistence challenges, automates disaster recovery, and ensures your security fleet remains healthy without manual intervention.
+<p align="center">
+  <img src="docs/images/logo-full.png" alt="Gozuh Logo" width="50%">
+</p>
+
+<p align="center">
+  <b>Lightweight. Secure. Persistent. Automated. Enterprise-Grade.</b>
+</p>
+
+**Gozuh** is a sophisticated **Wazuh Agent Companion** written in Go. It acts as an intelligent watchdog and lifecycle manager for Wazuh Agents on Windows, ensuring that identity persistence, self-healing, and disaster recovery are handled automatically.
 
 ---
 
 ## 🌪️ The Problem
 
-In dynamic IT environments, standard agents struggle with:
+Standard agent deployments often suffer from:
 
-* **Duplicate Agents:** Re-imaging or re-installing often creates duplicate entries in the manager.
-* **Identity Loss:** Disconnected agents cannot retrieve their old keys via standard API calls.
-* **Ghost Assets:** Renaming a PC often leaves "zombie" records of the old name in the manager.
-* **Cloned Disks:** Spinning up VMs from a "Golden Image" usually results in duplicate IDs or key conflicts.
+* **Identity Fragmentation:** Re-imaging or re-installing agents creates duplicate IDs in the manager.
+* **Zombie Records:** Renaming a PC leaves "disconnected" ghost entries forever.
+* **Stealth Failures:** If an agent service stops or the configuration is tampered with, the endpoint goes dark.
+* **Cloning Conflicts:** Cloned OS disks often carry over old keys, causing registration collisions.
 
 ## 🛡️ The Gozuh Solution
 
-Gozuh acts as a "Guardian" for the agent identity. It does not trust the OS state blindly; instead, it trusts the **Hardware**.
-
-### Key Features
-
-* **🛡️ Hardware Identity Guard**
-Gozuh generates a unique **Hardware Hash** derived from the motherboard UUID, BIOS Serial, and MAC Address. The agent name is locked to this signature: `hostname-[10_char_hash]`.
-* **🧠 Hybrid Verification (The "Secret Sauce")**
-When recovering an agent, Gozuh performs a strict verification:
-1. **Active Agents:** Verifies identity via **Wazuh Config API**.
-2. **Disconnected Agents:** Performs forensics on **Wazuh Indexer (OpenSearch)** logs to prove historical ownership.
-*Result:* It restores the original encryption keys (`client.keys`) *only* if the hardware matches 100%.
-
-
-* **🔄 Self-Healing & Watchdog**
-A background service runs every 60 seconds to:
-* **Revive:** Restart `WazuhSvc` if it crashes or is stopped by malware.
-* **Enforce:** Re-inject the hardware hash into `ossec.conf` if tampered with.
-* **Migrate:** Detect Hostname changes, delete the old agent record, and re-register automatically.
-
-
-* **🧹 Instant Purge (Decommissioning)**
-Decommission assets instantly using a specialized API call that bypasses Wazuh's standard 7-day deletion safeguard.
+Gozuh binds the Wazuh identity to the **Hardware**, not the OS. It uses a unique **Hardware Hash** derived from the Motherboard UUID, BIOS Serial, and Primary MAC Address to ensure the agent's identity is immutable.
 
 ---
 
-## ⚙️ How It Works (Workflow)
+## ⚙️ How It Works (Technical Workflow)
 
-Gozuh uses a "Smart Suffix Search" algorithm (`O(1)` complexity) to find candidates, followed by a "Strict Hash Comparison".
+Gozuh uses a **Smart Suffix Search** to locate candidates and **Hybrid Verification** (API + Indexer Forensics) to confirm ownership.
 
 ```mermaid
 graph TD
-    Start([Start Gozuh]) --> Identity[Calculate Hardware Hash]
-    Identity --> CheckLocal{Local State Valid?}
+    Start([🚀 Start Gozuh]) --> Identity[🔍 Calculate Hardware Hash]
+    Identity --> CheckLocal{💾 Local State Valid?}
     
-    %% Self Healing Path
-    CheckLocal -- Yes --> ServiceCheck{Wazuh Service Running?}
-    ServiceCheck -- No --> Restart[Restart Service]
-    ServiceCheck -- Yes --> Idle([Sleep / Watchdog Mode])
+    %% Watchdog Path
+    CheckLocal -- Yes --> ServiceCheck{🛠️ Services Running?}
+    ServiceCheck -- No --> Restart[♻️ Restart WazuhSvc]
+    ServiceCheck -- Yes --> Idle([💤 Watchdog Sleep])
     
-    %% Installation / Recovery Path
-    CheckLocal -- No --> Search[Search API for Suffix]
-    Search --> Candidate{Candidate Found?}
+    %% Recovery Path
+    CheckLocal -- No --> Search[🔎 API Search by Suffix]
+    Search --> Candidate{👤 Candidate Found?}
     
-    Candidate -- No --> Fresh[Fresh Install (New ID)]
+    Candidate -- No --> Fresh[✨ Fresh Install]
     
-    Candidate -- Yes --> Verify{Verify Full Hash}
-    Verify -- Match (Via API) --> Restore[Restore Keys]
-    Verify -- Match (Via Indexer Logs) --> Restore
+    Candidate -- Yes --> Verify{🔒 Strict Hash Match?}
+    Verify -- Match via API --> Restore[🔑 Restore Keys]
+    Verify -- Match via Indexer Logs --> Restore
     
-    Verify -- Mismatch --> Conflict{Hostname Changed?}
-    Conflict -- Yes --> Migrate[Delete Old Agent & Register New]
+    Verify -- Mismatch --> Conflict{📝 Hostname Changed?}
+    Conflict -- Yes --> Migrate[🗑️ Purge Old & Register New]
     Conflict -- No --> Fresh
     
-    Restore --> SaveState[Update Local State]
+    Restore --> SaveState[📝 Update State.json]
     Fresh --> SaveState
     Migrate --> SaveState
 
@@ -78,56 +63,36 @@ graph TD
 
 ---
 
-## 🧪 Chaos Scenarios (Capabilities)
+## 🧪 Chaos Scenarios & Self-Healing
 
-Gozuh is designed to survive infrastructure chaos. Here is how it handles specific scenarios:
+Gozuh is engineered to handle "Day 2" operational chaos automatically.
 
 | Scenario | Behavior | Outcome |
 | --- | --- | --- |
-| **Fresh Install** | New hardware detected. No existing suffix on server. | ✅ **Clean Registration.** New ID created. |
-| **Disaster Recovery** | OS is wiped/re-installed. Agent was "Disconnected" on server. | ✅ **Identity Restored.** Gozuh queries Indexer logs, confirms hardware match, and recovers old keys. **No duplicate agent.** |
-| **Hostname Change** | User renames PC from `DESKTOP-A` to `FINANCE-01`. | ✅ **Auto-Migration.** Gozuh detects name mismatch, deletes `DESKTOP-A` from server, and registers `FINANCE-01`. |
-| **OS Disk Cloning** | Disk cloned from Machine A to Machine B. Hostname is same, but Hardware UUID changed. | ✅ **Conflict Prevention.** Gozuh detects Hash Mismatch. It treats Machine B as a NEW agent. Machine A's session remains safe. |
-| **Tampering** | User deletes `client.keys` or stops the service. | ✅ **Self-Healing.** Service restarts automatically. Keys are recovered from the server if missing. |
-| **Decommission** | Admin runs `--purge`. | ✅ **Total Cleanup.** Agent is removed from local PC *and* deleted permanently from Wazuh Manager instantly. |
+| **Fresh Install** | New hardware detected with no existing suffix on the server. | ✅ **Clean Start.** New ID created. |
+| **Disaster Recovery** | OS wiped/re-installed. Agent was "Disconnected" on the server. | ✅ **Resurrection.** Gozuh queries Indexer logs, confirms hardware match, and restores old keys. |
+| **Hostname Change** | User renames PC from `HRD-01` to `FINANCE-PC`. | ✅ **Auto-Migration.** Gozuh detects the name mismatch, purges the old record, and registers the new one. |
+| **💾 OS Disk Cloning** | Disk cloned to new hardware. Hostname is identical, but HW Hash is different. | ✅ **Conflict Resolution.** Gozuh detects the hardware change, invalidates the old state, and registers as a new unique entity. |
+| **Tampering** | User stops `WazuhSvc` or deletes `client.keys`. | ✅ **Watchdog Intervention.** Service is restarted and keys are recovered from the server automatically. |
+| **Decommission** | Admin runs `--purge`. | ✅ **Total Cleanup.** Agent is removed locally and deleted permanently from the Manager database. |
 
 ---
 
 ## 📦 Installation & Usage
 
-### Prerequisites
-
-* Windows 10, 11, or Server.
-* Network access to Wazuh Manager API (55000) and Indexer (9200).
-
 ### 1. Deployment Package
 
-Your deployment folder should contain:
+Place the following in your deployment folder (e.g., for PDQ Deploy or Ansible):
 
-* `gozuh.exe` (The wrapper)
-* `wazuh-agent-4.x.x.msi` (Original installer)
-* `config.json` (Configuration)
+* `gozuh.exe` (The compiled binary)
+* `wazuh-agent-4.14.1-1.msi` (Original installer)
+* `config.json` (Your server settings)
 
-### 2. Configuration (`config.json`)
-
-```json
-{
-  "wazuh_url": "https://192.168.1.100:55000",
-  "api_user": "wazuh-wui",
-  "api_pass": "YourSecretPassword",
-  "indexer_url": "https://192.168.1.100:9200",
-  "indexer_user": "admin",
-  "indexer_pass": "YourSecretPassword",
-  "sync_interval": 60
-}
-
-```
-
-### 3. Commands
+### 2. Commands
 
 #### 🟢 Smart Install (Idempotent)
 
-Recommended for GPO / SCCM / Ansible. Safe to run repeatedly.
+The main command for mass deployment. It only installs or repairs if the system is not healthy.
 
 ```powershell
 .\gozuh.exe --install
@@ -136,16 +101,16 @@ Recommended for GPO / SCCM / Ansible. Safe to run repeatedly.
 
 #### 🟡 Local Uninstall
 
-Removes the agent from the device but **keeps** the data on the server (status becomes *Disconnected*). Allows for future recovery.
+Removes Gozuh and the Wazuh Agent locally but **keeps** the record on the server for future recovery.
 
 ```powershell
 .\gozuh.exe --uninstall
 
 ```
 
-#### 🔴 Purge (Decommission)
+#### 🔴 Full Purge (Decommission)
 
-**Destructive.** Removes the agent locally AND deletes it permanently from the Wazuh Manager database.
+Removes the agent locally and **permanently deletes** the agent record from the Wazuh Manager.
 
 ```powershell
 .\gozuh.exe --purge
@@ -154,7 +119,7 @@ Removes the agent from the device but **keeps** the data on the server (status b
 
 #### 🔵 Debug / Pre-flight
 
-Checks hardware identity and server connectivity without making changes.
+Analyzes hardware identity and server connectivity without making any changes.
 
 ```powershell
 .\gozuh.exe --debug
@@ -163,43 +128,42 @@ Checks hardware identity and server connectivity without making changes.
 
 ---
 
+## ⚙️ Configuration (`config.json`)
+
+The `config.json` must reside in `C:\Program Files\GOZUH\`.
+
+```json
+{
+  "wazuh_url": "https://192.168.13.230:55000",
+  "api_user": "wazuh-wui",
+  "api_pass": "YourSecretPassword",
+  "indexer_url": "https://192.168.13.230:9200",
+  "indexer_user": "admin",
+  "indexer_pass": "YourIndexerPassword",
+  "sync_interval": 60
+}
+
+```
+
+---
+
 ## 🏗️ Building from Source
 
-Requirements: Go 1.21+
+To build the final binary with the icon and professional metadata:
 
-1. Clone the repository.
-2. Build the optimized binary:
-
+1. **Generate Resource Properties:**
 ```bash
-go build -ldflags="-s -w" -o gozuh.exe ./cmd/gozuh/
+cd cmd/gozuh
+goversioninfo
+```
 
+
+3. **Compile:**
+```bash
+go build -ldflags="-s -w" -o gozuh.exe ./cmd/gozuh
 ```
 
 ---
 
-## 📂 Project Structure
-
-```text
-GOZUH/
-├── cmd/
-│   └── gozuh/
-│       └── main.go           # Entry point, CLI & Idempotency Logic
-├── internal/
-│   ├── config/               # Settings & State management
-│   ├── identity/             # Hardware Fingerprinting (WMI/MAC)
-│   ├── service/              # Background Watchdog Service
-│   ├── sys/                  # Windows Service Control & MSI Exec
-│   └── wazuh/                # API Client (Hybrid Verification Logic)
-├── docs/
-│   └── images/               # Assets
-├── go.mod
-└── config.json               # Template
-
-```
-
----
-
-**Developed for Enterprise DevSecOps.**
-*Gozuh ensures your endpoint telemetry is as reliable as your infrastructure.*
-
-
+**Developed for Modern DevSecOps Teams.**
+*Gozuh ensures that your endpoint security is as persistent as your hardware.*
