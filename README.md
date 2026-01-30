@@ -171,7 +171,7 @@ Requirements: Go 1.21+
 2. Build the optimized binary:
 
 ```bash
-go build -ldflags="-s -w" -o gozuh.exe ./cmd/gozuh/main.go
+go build -ldflags="-s -w" -o gozuh.exe ./cmd/gozuh/
 
 ```
 

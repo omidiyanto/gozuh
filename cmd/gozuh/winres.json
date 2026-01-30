@@ -1,0 +1,12 @@
+{
+  "RT_GROUP_ICON": {
+    "APP_ICON": {
+      "0": [ "../../docs/images/logo-head.png" ]
+    }
+  },
+  "RT_MANIFEST": {
+    "1": {
+      "0": "manifest.xml"
+    }
+  }
+}
