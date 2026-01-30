@@ -50,7 +50,7 @@ func main() {
 		return
 	}
 
-	fmt.Println("GOZUH Unified Agent Wrapper")
+	fmt.Println("GOZUH - Wazuh Agent Companion")
 	fmt.Println("Usage:")
 	flag.PrintDefaults()
 }

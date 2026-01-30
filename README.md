@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <b>Lightweight. Secure. Persistent. Automated. Enterprise-Grade.</b>
+  <b>Lightweight. Secure. Persistent. Automated. Smart.</b>
 </p>
 
 **Gozuh** is a sophisticated **Wazuh Agent Companion** written in Go. It acts as an intelligent watchdog and lifecycle manager for Wazuh Agents on Windows, ensuring that identity persistence, self-healing, and disaster recovery are handled automatically.
