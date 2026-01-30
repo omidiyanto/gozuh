@@ -13,8 +13,8 @@ type Config struct {
 	APIPass  string `json:"api_pass"`
 
 	IndexerURL  string `json:"indexer_url"`
-	IndexerUser string `json:"indexer_user"` // NEW
-	IndexerPass string `json:"indexer_pass"` // NEW
+	IndexerUser string `json:"indexer_user"`
+	IndexerPass string `json:"indexer_pass"`
 
 	SyncInterval int `json:"sync_interval"`
 }
@@ -33,13 +33,13 @@ const (
 func LoadConfig() (*Config, error) {
 	// Default Config
 	defaultConf := &Config{
-		WazuhURL: "https://192.168.13.230:55000",
+		WazuhURL: "https://WAZUH_SERVER_ADDR:55000",
 		APIUser:  "wazuh-wui",
-		APIPass:  "MyS3cr37P450r.*-",
+		APIPass:  "YOUR_PASSWORD",
 
-		IndexerURL:  "https://192.168.13.230:9200",
+		IndexerURL:  "https://WAZUH_SERVER_ADDR:9200",
 		IndexerUser: "admin",
-		IndexerPass: "SecretPassword",
+		IndexerPass: "YOUR_PASSWORD",
 
 		SyncInterval: 60,
 	}
@@ -52,8 +52,6 @@ func LoadConfig() (*Config, error) {
 	if err := json.Unmarshal(file, &conf); err != nil {
 		return defaultConf, nil
 	}
-
-	// Fallback values jika config lama
 	if conf.IndexerURL == "" {
 		conf.IndexerURL = defaultConf.IndexerURL
 	}

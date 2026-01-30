@@ -107,7 +107,6 @@ func unifiedPurge() {
 						fmt.Printf("   -> Success: %s\n", resp)
 						deletedCount++
 					} else {
-						// FIX: Print 'resp' (Body) to debug error details
 						fmt.Printf("   -> Failed: %v. Response: %s\n", err, resp)
 					}
 				}
@@ -221,16 +220,12 @@ func unifiedInstall() {
 		log.Fatalf("[FATAL] Hardware Error: %v", err)
 	}
 
-	// --- IDEMPOTENCY CHECK (Supaya aman di-run berkali-kali via Ansible/PDQ) ---
-	// Cek 1: Apakah Service GOZUH sudah berjalan?
 	gozuhStatus := sys.GetServiceStatus("GOZUH")
 	wazuhStatus := sys.GetServiceStatus("WazuhSvc")
 
-	// Cek 2: Apakah State Lokal konsisten dengan Hardware saat ini?
 	state, _ := config.LoadState()
 	isStateValid := (state != nil && state.HardwareHash == hw.Hash)
 
-	// Cek 3: Apakah Key File ada?
 	keyExists := false
 	if _, err := os.Stat("C:\\Program Files (x86)\\ossec-agent\\client.keys"); err == nil {
 		keyExists = true
@@ -241,9 +236,7 @@ func unifiedInstall() {
 		fmt.Printf("       - Hardware Identity : MATCH (%s)\n", hw.Hash[:10])
 		fmt.Println("       - Services          : RUNNING")
 		fmt.Println("       - Action            : NONE (Idempotent Exit)")
-		return // KELUAR DISINI (Exit Code 0)
 	}
-	// --------------------------------------------------------------------------
 
 	conf, _ := config.LoadConfig()
 	api := wazuh.NewClient(conf.WazuhURL, conf.IndexerURL, conf.APIUser, conf.APIPass, conf.IndexerUser, conf.IndexerPass)
@@ -309,12 +302,10 @@ func unifiedInstall() {
 		fmt.Println("   -> No valid owner found (Strict Check). Proceeding with FRESH INSTALL.")
 	}
 
-	// 3. INSTALL MSI
 	if err := sys.InstallWazuhMSI(managerIP, targetName); err != nil {
 		log.Fatalf("[FATAL] MSI Install Failed: %v", err)
 	}
 
-	// 4. STOP & CONFIGURE
 	time.Sleep(5 * time.Second)
 	s, err := sys.ConnectService("WazuhSvc")
 	if err == nil {
@@ -328,7 +319,6 @@ func unifiedInstall() {
 	wazuh.ApplyHardening()
 	wazuh.UpdateAgentName(targetName)
 
-	// 5. RESTORE KEY
 	if recoveryKeyB64 != "" {
 		fmt.Printf("[RESTORE] Restoring session key for agent '%s' (ID: %s)...\n", recoveryName, recoveryID)
 
@@ -348,7 +338,6 @@ func unifiedInstall() {
 		os.Remove("C:\\Program Files (x86)\\ossec-agent\\client.keys")
 	}
 
-	// 6. START & SAVE
 	installGozuhService()
 	sys.RestartWazuhAgent()
 	startGozuhManual()
@@ -383,7 +372,6 @@ func unifiedUninstall() {
 	fmt.Println(">>> UNINSTALL COMPLETE <<<")
 }
 
-// Helpers
 func parseIPFromURL(rawURL string) string {
 	cleaned := strings.TrimPrefix(rawURL, "https://")
 	cleaned = strings.TrimPrefix(cleaned, "http://")

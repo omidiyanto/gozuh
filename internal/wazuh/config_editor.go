@@ -16,18 +16,15 @@ const (
 	LabelKey      = "hardware_hash"
 )
 
-// DisableCISBenchmarks me-rename file policy CIS bawaan agar tidak dijalankan
 func DisableCISBenchmarks() error {
 	fmt.Println("[HARDENING] Disabling CIS Benchmark policies...")
-	
-	// Cari semua file yang diawali "cis" dan diakhiri ".yaml" atau ".yml"
+
 	files, err := filepath.Glob(filepath.Join(SCARulesPath, "cis*.y*ml"))
 	if err != nil {
 		return fmt.Errorf("gagal scan folder SCA: %v", err)
 	}
 
 	for _, file := range files {
-		// Skip jika sudah disabled
 		if strings.HasSuffix(file, ".disabled") {
 			continue
 		}
@@ -41,13 +38,13 @@ func DisableCISBenchmarks() error {
 	return nil
 }
 
-// ApplyHardening menonaktifkan fitur SCA via Config (Backup plan)
 func ApplyHardening() error {
 	contentBytes, err := os.ReadFile(OssecConfPath)
-	if err != nil { return err }
+	if err != nil {
+		return err
+	}
 	content := string(contentBytes)
 
-	// Disable SCA block in config
 	reSCA := regexp.MustCompile(`(?s)<sca>.*?</sca>`)
 	newContent := reSCA.ReplaceAllStringFunc(content, func(m string) string {
 		return strings.Replace(m, "<disabled>no</disabled>", "<disabled>yes</disabled>", 1)
@@ -56,15 +53,16 @@ func ApplyHardening() error {
 	return os.WriteFile(OssecConfPath, []byte(newContent), 0644)
 }
 
-// UpdateAgentName mengupdate <agent_name>
 func UpdateAgentName(newName string) error {
 	contentBytes, err := os.ReadFile(OssecConfPath)
-	if err != nil { return err }
+	if err != nil {
+		return err
+	}
 	content := string(contentBytes)
 
 	expectedTag := fmt.Sprintf("<agent_name>%s</agent_name>", newName)
 	reName := regexp.MustCompile(`<agent_name>.*?</agent_name>`)
-	
+
 	var newContent string
 	if reName.MatchString(content) {
 		newContent = reName.ReplaceAllString(content, expectedTag)
@@ -74,28 +72,26 @@ func UpdateAgentName(newName string) error {
 	return os.WriteFile(OssecConfPath, []byte(newContent), 0644)
 }
 
-// EnsureHardwareLabel (Sanitize & Inject Single Source of Truth)
 func EnsureHardwareLabel(hash string) (bool, error) {
 	contentBytes, err := os.ReadFile(OssecConfPath)
-	if err != nil { return false, err }
+	if err != nil {
+		return false, err
+	}
 	content := string(contentBytes)
 
 	correctLine := fmt.Sprintf(`<label key="%s">%s</label>`, LabelKey, hash)
-	
-	// Cek apakah sudah sempurna
+
 	reAnyHash := regexp.MustCompile(fmt.Sprintf(`<label key="%s">.*?</label>`, LabelKey))
 	matches := reAnyHash.FindAllString(content, -1)
-	
+
 	if len(matches) == 1 && matches[0] == correctLine {
 		return false, nil
 	}
 
 	fmt.Println("[CONFIG] Fixing hardware_hash labels (Removing duplicates/fakes)...")
 
-	// 1. Hapus SEMUA label hardware_hash
 	cleanContent := reAnyHash.ReplaceAllString(content, "")
 
-	// 2. Inject SATU yang benar
 	var finalContent string
 	if strings.Contains(cleanContent, "</labels>") {
 		finalContent = strings.Replace(cleanContent, "</labels>", "  "+correctLine+"\n    </labels>", 1)
@@ -111,8 +107,10 @@ func EnsureHardwareLabel(hash string) (bool, error) {
 }
 
 func copyFile(src, dst string) error {
-	in, _ := os.Open(src); defer in.Close()
-	out, _ := os.Create(dst); defer out.Close()
+	in, _ := os.Open(src)
+	defer in.Close()
+	out, _ := os.Create(dst)
+	defer out.Close()
 	_, err := io.Copy(out, in)
 	return err
 }

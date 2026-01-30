@@ -1,7 +1,7 @@
 package service
 
 import (
-	"encoding/base64" // IMPORT PENTING
+	"encoding/base64"
 	"fmt"
 	"log"
 	"os"
@@ -93,13 +93,11 @@ func (m *GozuhService) RunLoop() {
 					continue
 				}
 
-				// Cek Config
 				labels, err := api.GetAgentLabels(can.ID)
 				isDuplicate := false
 				if err == nil && strings.EqualFold(labels["hardware_hash"], hw.Hash) {
 					isDuplicate = true
 				} else {
-					// Cek Indexer
 					match, _ := api.VerifyHashInIndexer(can.ID, hw.Hash)
 					if match {
 						isDuplicate = true
@@ -112,14 +110,12 @@ func (m *GozuhService) RunLoop() {
 				}
 			}
 
-			// Restore Logic
 			os.Remove("C:\\Program Files (x86)\\ossec-agent\\client.keys")
 			wazuh.UpdateAgentName(targetName)
 
 			if id, _ := api.GetAgentByName(targetName); id != "" {
 				keyB64, err := api.GetAgentKey(id)
 				if err == nil {
-					// FIX: Decode Base64 sebelum write
 					rawKey, decodeErr := base64.StdEncoding.DecodeString(keyB64)
 					if decodeErr == nil {
 						keyPath := "C:\\Program Files (x86)\\ossec-agent\\client.keys"
