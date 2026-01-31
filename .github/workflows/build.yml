@@ -1,0 +1,61 @@
+name: Build Gozuh (x64 & x32)
+
+on:
+  push:
+    branches: [ "master", "main" ]
+  pull_request:
+    branches: [ "master", "main" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build Windows Binaries
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v4
+
+    - name: Setup Go 1.20 (Win7 Support)
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.20' 
+        cache: true
+
+    - name: Install Dependencies
+      run: |
+        go mod tidy
+        # Install tool untuk generate resource (Icon/Manifest)
+        go install github.com/josephspurrier/goversioninfo/cmd/goversioninfo@latest
+
+    # --- BUILD 64-BIT (AMD64) ---
+    - name: Build x64 (Windows 64-bit)
+      env:
+        GOOS: windows
+        GOARCH: amd64
+        CGO_ENABLED: 0 
+      run: |
+        cd cmd/gozuh
+        goversioninfo -icon=../../docs/images/icon.ico -manifest=manifest.xml
+        go build -ldflags="-s -w" -o ../../gozuh-x64.exe .
+        rm resource.syso
+
+    # --- BUILD 32-BIT (386) ---
+    - name: Build x32 (Windows 32-bit)
+      env:
+        GOOS: windows
+        GOARCH: 386 
+        CGO_ENABLED: 0
+      run: |
+        cd cmd/gozuh
+        goversioninfo -icon=../../docs/images/icon.ico -manifest=manifest.xml
+        go build -ldflags="-s -w" -o ../../gozuh-x32.exe .
+
+    # --- UPLOAD ARTIFACT ---
+    - name: Upload Release Artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: gozuh-release-package
+        path: |
+          gozuh-x64.exe
+          gozuh-x32.exe
