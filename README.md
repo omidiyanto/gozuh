@@ -42,7 +42,7 @@ Gozuh runs a continuous reconciliation loop. It compares the **Local State** aga
 
 ## ⚙️ Technical Workflow
 
-Gozuh uses a **Smart Suffix Search** to locate candidates and **Hybrid Verification** (API + Indexer Forensics) to confirm ownership.
+Gozuh uses a **Smart Suffix Search** to locate candidates and **Hybrid Verification** (API + Indexer Forensics) to confirm ownership of the Hardware Identity Hash.
 
 ```mermaid
 graph TD
@@ -68,42 +68,6 @@ graph TD
     CheckStatus -- No --> Zombie([⚡ Case G: Restart])
     
     CheckStatus -- Yes --> Idle([💤 Case A: Idle])
-
----
-
-## ⚙️ How It Works
-
-Gozuh uses a **Smart Suffix Search** to locate candidates and **Hybrid Verification** (API + Indexer Forensics) to confirm ownership of the Hardware Identity Hash.
-
-```mermaid
-graph TD
-    Start([🚀 Start Gozuh]) --> Identity[🔍 Calculate Hardware Hash]
-    Identity --> CheckLocal{💾 Local State Valid?}
-    
-    %% Watchdog Path
-    CheckLocal -- Yes --> ServiceCheck{🛠️ Services Running?}
-    ServiceCheck -- No --> Restart[♻️ Restart WazuhSvc]
-    ServiceCheck -- Yes --> Idle([💤 Watchdog Sleep])
-    
-    %% Recovery Path
-    CheckLocal -- No --> Search[🔎 API Search by Suffix]
-    Search --> Candidate{👤 Candidate Found?}
-    
-    Candidate -- No --> Fresh[✨ Fresh Install]
-    
-    Candidate -- Yes --> Verify{🔒 Strict Hash Match?}
-    Verify -- Match via API --> Restore[🔑 Restore Keys]
-    Verify -- Match via Indexer Logs --> Restore
-    
-    Verify -- Mismatch --> Conflict{📝 Hostname Changed?}
-    Conflict -- Yes --> Migrate[🗑️ Purge Old & Register New]
-    Conflict -- No --> Fresh
-    
-    Restore --> SaveState[📝 Update State.json]
-    Fresh --> SaveState
-    Migrate --> SaveState
-
-```
 
 ---
 
