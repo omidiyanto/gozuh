@@ -8,28 +8,72 @@
   <b>Lightweight. Secure. Persistent. Automated. Smart.</b>
 </p>
 
-**Gozuh** is a sophisticated **Wazuh Agent Companion** written in Go. It acts as an intelligent watchdog and lifecycle manager for Wazuh Agents on Windows, ensuring that identity persistence, self-healing, and disaster recovery are handled automatically.
+**Gozuh** is a sophisticated **Wazuh Agent Companion** written in Go. It acts as an intelligent watchdog and lifecycle manager for Wazuh Agents on Windows, ensuring that identity persistence, self-healing, and disaster recovery are handled automatically based on a strict decision matrix.
 
 ---
 
 ## 🌪️ The Problem
-
 Standard agent deployments often suffer from:
-
-* **Identity Fragmentation:** Re-imaging or re-installing agents creates duplicate IDs in the manager.
-* **Zombie Records:** Renaming a PC leaves "disconnected" ghost entries forever.
-* **Stealth Failures:** If an agent service stops or the configuration is tampered with, the endpoint goes dark.
-* **Cloning Conflicts:** Cloned OS disks often carry over old keys, causing registration collisions.
+* **Identity Fragmentation:** Re-imaging creates duplicate IDs.
+* **Zombie Records:** Renaming leaves "disconnected" ghost entries.
+* **Stealth Failures:** Service stops or config tampering goes unnoticed.
+* **Cloning Conflicts:** Cloned OS disks carry over old keys, causing collisions.
 
 ## 🛡️ The Gozuh Solution
-
-Gozuh binds the Wazuh identity to the **Hardware**, not the OS. It uses a unique **Hardware Hash** derived from the Motherboard UUID, BIOS Serial, and Primary MAC Address to ensure the agent's identity is immutable.
+Gozuh binds the Wazuh identity to the **Hardware**, not the OS. It uses a unique **Hardware Hash** derived from the Motherboard UUID, BIOS Serial, and Primary MAC Address.
 
 ---
 
-## ⚙️ How It Works (Technical Workflow)
+## 🧠 The Brain: Logic Matrix (Truth Table)
+
+Gozuh runs a continuous reconciliation loop. It compares the **Local State** against the **Server State** to determine the exact scenario and the appropriate self-healing action.
+
+| Scenario | API Connection | Server Status | Local Status | Diagnosis | Action Taken |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **[Case A: Normal](docs/case-a.md)** | ✅ Healthy | ✅ Active | ✅ Healthy | **Fully Synced** | 💤 **Idle.** (Do nothing). |
+| **[Case B: Network](docs/case-b.md)** | ❌ Failed | ❓ Unknown | ✅ Healthy | **Network Outage** | 🛡️ **Standby.** Don't panic. Allow agent to buffer logs. |
+| **[Case C: Ghost](docs/case-c.md)** | ✅ Healthy | ❌ 404 Not Found | ✅ Has Keys | **Server Deletion** | 🩹 **Self-Heal.** Drop local key -> Trigger Re-register. |
+| **[Case D: Cloning](docs/case-d.md)** | ✅ Healthy | ✅ Hash Mismatch | ✅ Hash Changed | **Cloning Detected** | 🧬 **Migration.** Drop local identity (Protect Source) -> Fresh Register. |
+| **[Case E: Rename](docs/case-e.md)** | ✅ Healthy | ✅ Name Mismatch | ⚠️ Name Changed | **Hostname Change** | 🏷️ **Update Name.** Delete old record -> Re-register with new name. |
+| **[Case F: Corrupt](docs/case-f.md)** | ✅ Healthy | ✅ Active | ❌ Key/Config Bad | **Local Corruption** | 🚑 **Recovery.** Fix Config -> Restore Key from Server. |
+| **[Case G: Zombie](docs/case-g.md)** | ✅ Healthy | ⚠️ Disconnected | ✅ Service Running | **Service Hang** | ⚡ **Restart.** Force restart WazuhSvc to refresh socket. |
+
+---
+
+## ⚙️ Technical Workflow
 
 Gozuh uses a **Smart Suffix Search** to locate candidates and **Hybrid Verification** (API + Indexer Forensics) to confirm ownership.
+
+```mermaid
+graph TD
+    Start([🚀 Start Loop]) --> Context[📊 Build Context]
+    Context --> CheckConfig{📝 Config Valid?}
+    
+    CheckConfig -- No --> FixConfig[🔧 Action: Fix Config]
+    FixConfig --> Restart
+    
+    CheckConfig -- Yes --> CheckNet{🌐 API Reachable?}
+    CheckNet -- No --> Standby([🛡️ Case B: Standby])
+    
+    CheckNet -- Yes --> CheckServer{☁️ Agent Exists?}
+    CheckServer -- No --> Ghost([👻 Case C: Self-Heal])
+    
+    CheckServer -- Yes --> CheckHash{#️⃣ Hash Match?}
+    CheckHash -- No --> Clone([🧬 Case D: Migration])
+    
+    CheckHash -- Yes --> CheckName{🏷️ Name Match?}
+    CheckName -- No --> Rename([📝 Case E: Rename])
+    
+    CheckName -- Yes --> CheckStatus{💓 Status OK?}
+    CheckStatus -- No --> Zombie([⚡ Case G: Restart])
+    
+    CheckStatus -- Yes --> Idle([💤 Case A: Idle])
+
+---
+
+## ⚙️ How It Works
+
+Gozuh uses a **Smart Suffix Search** to locate candidates and **Hybrid Verification** (API + Indexer Forensics) to confirm ownership of the Hardware Identity Hash.
 
 ```mermaid
 graph TD
@@ -76,7 +120,9 @@ Gozuh is engineered to handle "Day 2" operational chaos automatically.
 | **Tampering** | User stops `WazuhSvc` or deletes `client.keys`. | ✅ **Watchdog Intervention.** Service is restarted and keys are recovered from the server automatically. |
 | **Decommission** | Admin runs `--purge`. | ✅ **Total Cleanup.** Agent is removed locally and deleted permanently from the Manager database. |
 
+
 ---
+**Note**: Check the details on folder `docs/`
 
 ## 📦 Installation & Usage
 

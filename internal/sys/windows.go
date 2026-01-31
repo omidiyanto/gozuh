@@ -2,13 +2,15 @@ package sys
 
 import (
 	"fmt"
+	"os"
 	"time"
-
+	"gozuh/internal/config"
 	"golang.org/x/sys/windows/svc"
 	"golang.org/x/sys/windows/svc/mgr"
 )
 
 const WazuhServiceName = "WazuhSvc"
+const GozuhServiceName = "GOZUH"
 
 func GetServiceStatus(name string) string {
 	m, err := mgr.Connect()
@@ -66,6 +68,23 @@ func IsServiceRunning() (bool, error) {
 	return status.State == svc.Running, nil
 }
 
+func StopWazuhService() error {
+	m, err := mgr.Connect()
+	if err != nil { return err }
+	defer m.Disconnect()
+	
+	s, err := m.OpenService(config.WazuhService)
+	if err != nil { return err }
+	defer s.Close()
+	
+	status, _ := s.Query()
+	if status.State == svc.Running {
+		s.Control(svc.Stop)
+		time.Sleep(2 * time.Second)
+	}
+	return nil
+}
+
 func RestartWazuhAgent() error {
 	m, err := mgr.Connect()
 	if err != nil {
@@ -89,4 +108,56 @@ func RestartWazuhAgent() error {
 		}
 	}
 	return s.Start()
+}
+
+func InstallGozuhService() error {
+	exePath, err := os.Executable()
+	if err != nil { return err }
+
+	m, err := mgr.Connect()
+	if err != nil { return err }
+	defer m.Disconnect()
+
+	s, err := m.OpenService(GozuhServiceName)
+	if err == nil {
+		s.Close()
+		return nil 
+	}
+
+	config := mgr.Config{
+		StartType:    mgr.StartAutomatic,
+		DisplayName:  "Wazuh | Gozuh - Agent Companion for Wazuh",
+		Description:  "Smart Wazuh Agent Lifecycle Manager",
+		ErrorControl: mgr.ErrorNormal,
+	}
+
+	s, err = m.CreateService(GozuhServiceName, exePath, config)
+	if err != nil { return err }
+	defer s.Close()
+	return nil
+}
+
+func StartGozuhService() error {
+	m, err := mgr.Connect()
+	if err != nil { return err }
+	defer m.Disconnect()
+
+	s, err := m.OpenService(GozuhServiceName)
+	if err != nil { return err }
+	defer s.Close()
+
+	return s.Start()
+}
+
+func RemoveGozuhService() error {
+	m, err := mgr.Connect()
+	if err != nil { return err }
+	defer m.Disconnect()
+
+	s, err := m.OpenService(GozuhServiceName)
+	if err != nil { return nil } 
+	defer s.Close()
+
+	s.Control(svc.Stop)
+	return s.Delete()
 }

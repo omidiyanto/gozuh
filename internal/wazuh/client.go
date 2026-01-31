@@ -7,18 +7,27 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"net/http"
 	"net/url"
+	"net/http"
+	"os"
 	"strings"
 	"time"
+	"gozuh/internal/config"
 )
 
 type Client struct {
-	BaseURL                  string
-	IndexerURL               string
-	User, Pass, Token        string
+	BaseURL     string
+	IndexerURL  string
+	User, Pass, Token string
 	IndexerUser, IndexerPass string
-	HTTPClient               *http.Client
+	HTTPClient  *http.Client
+}
+
+type AgentInfo struct {
+	Status        string `json:"status"`
+	ID            string `json:"id"`
+	Name          string `json:"name"`
+	LastKeepAlive string `json:"lastKeepAlive"`
 }
 
 func NewClient(urlStr, indexerStr, user, pass, idxUser, idxPass string) *Client {
@@ -30,10 +39,57 @@ func NewClient(urlStr, indexerStr, user, pass, idxUser, idxPass string) *Client 
 		IndexerUser: idxUser,
 		IndexerPass: idxPass,
 		HTTPClient: &http.Client{
-			Timeout:   15 * time.Second,
+			Timeout:   10 * time.Second, 
 			Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}},
 		},
 	}
+}
+
+func GetLocalAuth() (id string, name string, err error) {
+	content, err := os.ReadFile(config.WazuhClientKey)
+	if err != nil { return "", "", err }
+	
+	lines := strings.Split(string(content), "\n")
+	for _, line := range lines {
+		parts := strings.Fields(line)
+		if len(parts) >= 2 {
+			return parts[0], parts[1], nil
+		}
+	}
+	return "", "", fmt.Errorf("empty keys")
+}
+
+func (c *Client) GetAgentInfo(agentID string) (*AgentInfo, error) {
+	if c.Token == "" { c.Authenticate() }
+	
+	apiURL := fmt.Sprintf("%s/agents?agents_list=%s&select=status,id,name,lastKeepAlive", c.BaseURL, agentID)
+	req, _ := http.NewRequest("GET", apiURL, nil)
+	req.Header.Add("Authorization", "Bearer "+c.Token)
+	
+	resp, err := c.HTTPClient.Do(req)
+	if err != nil { return nil, err }
+	defer resp.Body.Close()
+	
+	if resp.StatusCode == 401 { 
+		c.Authenticate()
+		return c.GetAgentInfo(agentID)
+	}
+	
+	if resp.StatusCode != 200 { return nil, fmt.Errorf("http_error_%d", resp.StatusCode) }
+
+	var res struct {
+		Data struct {
+			AffectedItems []AgentInfo `json:"affected_items"`
+		} `json:"data"`
+	}
+	
+	if err := json.NewDecoder(resp.Body).Decode(&res); err != nil { return nil, err }
+	
+	if len(res.Data.AffectedItems) == 0 {
+		return nil, fmt.Errorf("not_found")
+	}
+	
+	return &res.Data.AffectedItems[0], nil
 }
 
 func (c *Client) Authenticate() error {

@@ -16,6 +16,21 @@ const (
 	LabelKey      = "hardware_hash"
 )
 
+func GetHardwareLabel() (string, error) {
+	contentBytes, err := os.ReadFile(OssecConfPath)
+	if err != nil {
+		return "", err
+	}
+	content := string(contentBytes)
+	re := regexp.MustCompile(fmt.Sprintf(`<label key="%s">([^<]+)</label>`, LabelKey))
+	matches := re.FindStringSubmatch(content)
+	
+	if len(matches) >= 2 {
+		return matches[1], nil
+	}
+	return "", nil 
+}
+
 func DisableCISBenchmarks() error {
 	fmt.Println("[HARDENING] Disabling CIS Benchmark policies...")
 
@@ -74,30 +89,24 @@ func UpdateAgentName(newName string) error {
 
 func EnsureHardwareLabel(hash string) (bool, error) {
 	contentBytes, err := os.ReadFile(OssecConfPath)
-	if err != nil {
-		return false, err
-	}
+	if err != nil { return false, err }
 	content := string(contentBytes)
-
 	correctLine := fmt.Sprintf(`<label key="%s">%s</label>`, LabelKey, hash)
-
-	reAnyHash := regexp.MustCompile(fmt.Sprintf(`<label key="%s">.*?</label>`, LabelKey))
-	matches := reAnyHash.FindAllString(content, -1)
-
-	if len(matches) == 1 && matches[0] == correctLine {
+	if strings.Contains(content, correctLine) {
 		return false, nil
 	}
 
-	fmt.Println("[CONFIG] Fixing hardware_hash labels (Removing duplicates/fakes)...")
-
+	fmt.Println("[CONFIG] Fixing hardware_hash labels...")
+	reAnyHash := regexp.MustCompile(fmt.Sprintf(`\s*<label key="%s">.*?</label>`, LabelKey))
 	cleanContent := reAnyHash.ReplaceAllString(content, "")
-
 	var finalContent string
 	if strings.Contains(cleanContent, "</labels>") {
-		finalContent = strings.Replace(cleanContent, "</labels>", "  "+correctLine+"\n    </labels>", 1)
+		reEndLabels := regexp.MustCompile(`\s*</labels>`)
+		finalContent = reEndLabels.ReplaceAllString(cleanContent, fmt.Sprintf("\n    %s\n  </labels>", correctLine))
 	} else {
-		block := fmt.Sprintf("\n  <labels>\n    %s\n  </labels>\n", correctLine)
-		finalContent = strings.Replace(cleanContent, "</ossec_config>", block+"</ossec_config>", 1)
+		reEndConfig := regexp.MustCompile(`\s*</ossec_config>`)
+		block := fmt.Sprintf("\n  <labels>\n    %s\n  </labels>\n</ossec_config>", correctLine)
+		finalContent = reEndConfig.ReplaceAllString(cleanContent, block)
 	}
 
 	if err := os.WriteFile(OssecConfPath, []byte(finalContent), 0644); err != nil {

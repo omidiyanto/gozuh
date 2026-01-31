@@ -7,16 +7,26 @@ import (
 	"time"
 )
 
+const (
+	AppDir         = "C:\\Program Files\\GOZUH"
+	WazuhDir       = "C:\\Program Files (x86)\\ossec-agent"
+	ConfigFile     = AppDir + "\\config.json"
+	StateFile      = AppDir + "\\state.json"
+	LogFile        = AppDir + "\\service.log"
+	WazuhClientKey = WazuhDir + "\\client.keys"
+	WazuhConf      = WazuhDir + "\\ossec.conf"
+	WazuhService   = "WazuhSvc"
+	GozuhService   = "GOZUH"
+)
+
 type Config struct {
-	WazuhURL string `json:"wazuh_url"`
-	APIUser  string `json:"api_user"`
-	APIPass  string `json:"api_pass"`
-
-	IndexerURL  string `json:"indexer_url"`
-	IndexerUser string `json:"indexer_user"`
-	IndexerPass string `json:"indexer_pass"`
-
-	SyncInterval int `json:"sync_interval"`
+	WazuhURL     string `json:"wazuh_url"`
+	APIUser      string `json:"api_user"`
+	APIPass      string `json:"api_pass"`
+	IndexerURL   string `json:"indexer_url"`
+	IndexerUser  string `json:"indexer_user"`
+	IndexerPass  string `json:"indexer_pass"`
+	SyncInterval int    `json:"sync_interval"`
 }
 
 type State struct {
@@ -25,22 +35,15 @@ type State struct {
 	LastSync     string `json:"last_sync"`
 }
 
-const (
-	ConfigFile = "C:\\Program Files\\GOZUH\\config.json"
-	StateFile  = "C:\\Program Files\\GOZUH\\state.json"
-)
-
 func LoadConfig() (*Config, error) {
 	// Default Config
 	defaultConf := &Config{
-		WazuhURL: "https://WAZUH_SERVER_ADDR:55000",
-		APIUser:  "wazuh-wui",
-		APIPass:  "YOUR_PASSWORD",
-
-		IndexerURL:  "https://WAZUH_SERVER_ADDR:9200",
-		IndexerUser: "admin",
-		IndexerPass: "YOUR_PASSWORD",
-
+		WazuhURL:     "https://192.168.0.230:55000",
+		APIUser:      "wazuh-wui",
+		APIPass:      "MyS3cr37P450r.*-",
+		IndexerURL:   "https://192.168.0.230:9200",
+		IndexerUser:  "admin",
+		IndexerPass:  "SecretPassword",
 		SyncInterval: 60,
 	}
 
@@ -52,19 +55,10 @@ func LoadConfig() (*Config, error) {
 	if err := json.Unmarshal(file, &conf); err != nil {
 		return defaultConf, nil
 	}
-	if conf.IndexerURL == "" {
-		conf.IndexerURL = defaultConf.IndexerURL
-	}
-	if conf.IndexerUser == "" {
-		conf.IndexerUser = defaultConf.IndexerUser
-	}
-	if conf.IndexerPass == "" {
-		conf.IndexerPass = defaultConf.IndexerPass
-	}
+
 	if conf.SyncInterval < 10 {
 		conf.SyncInterval = 60
 	}
-
 	return &conf, nil
 }
 
@@ -79,13 +73,13 @@ func LoadState() (*State, error) {
 }
 
 func SaveState(s *State) error {
-	ensureDir(StateFile)
+	EnsureDir(StateFile)
 	s.LastSync = time.Now().Format(time.RFC3339)
 	data, _ := json.MarshalIndent(s, "", "  ")
 	return os.WriteFile(StateFile, data, 0644)
 }
 
-func ensureDir(path string) {
+func EnsureDir(path string) {
 	dir := filepath.Dir(path)
 	if _, err := os.Stat(dir); os.IsNotExist(err) {
 		os.MkdirAll(dir, 0755)
