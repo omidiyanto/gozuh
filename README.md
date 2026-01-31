@@ -68,7 +68,7 @@ graph TD
     CheckStatus -- No --> Zombie([⚡ Case G: Restart])
     
     CheckStatus -- Yes --> Idle([💤 Case A: Idle])
-
+```
 ---
 
 ## 🧪 Chaos Scenarios & Self-Healing
