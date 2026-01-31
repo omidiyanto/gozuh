@@ -26,7 +26,7 @@ Gozuh binds the Wazuh identity to the **Hardware**, not the OS. It uses a unique
 
 ## 🧠 The Brain: Logic Matrix (Truth Table)
 
-Gozuh runs a continuous reconciliation loop. It compares the **Local State** against the **Server State** to determine the exact scenario and the appropriate self-healing action.
+Gozuh is engineered to handle "Day 2" operational chaos automatically by runs a continuous reconciliation loop. It compares the **Local State** against the **Server State** to determine the exact scenario and the appropriate self-healing action.
 
 | Scenario | API Connection | Server Status | Local Status | Diagnosis | Action Taken |
 | :--- | :--- | :--- | :--- | :--- | :--- |
@@ -39,6 +39,8 @@ Gozuh runs a continuous reconciliation loop. It compares the **Local State** aga
 | **[Case G: Zombie](docs/case-g.md)** | ✅ Healthy | ⚠️ Disconnected | ✅ Service Running | **Service Hang** | ⚡ **Restart.** Force restart WazuhSvc to refresh socket. |
 
 ---
+**Note**: Check the details on folder `docs/`
+
 
 ## ⚙️ Technical Workflow
 
@@ -70,23 +72,6 @@ graph TD
     CheckStatus -- Yes --> Idle([💤 Case A: Idle])
 ```
 ---
-
-## 🧪 Chaos Scenarios & Self-Healing
-
-Gozuh is engineered to handle "Day 2" operational chaos automatically.
-
-| Scenario | Behavior | Outcome |
-| --- | --- | --- |
-| **Fresh Install** | New hardware detected with no existing suffix on the server. | ✅ **Clean Start.** New ID created. |
-| **Disaster Recovery** | OS wiped/re-installed. Agent was "Disconnected" on the server. | ✅ **Resurrection.** Gozuh queries Indexer logs, confirms hardware match, and restores old keys. |
-| **Hostname Change** | User renames PC from `HRD-01` to `FINANCE-PC`. | ✅ **Auto-Migration.** Gozuh detects the name mismatch, purges the old record, and registers the new one. |
-| **💾 OS Disk Cloning** | Disk cloned to new hardware. Hostname is identical, but HW Hash is different. | ✅ **Conflict Resolution.** Gozuh detects the hardware change, invalidates the old state, and registers as a new unique entity. |
-| **Tampering** | User stops `WazuhSvc` or deletes `client.keys`. | ✅ **Watchdog Intervention.** Service is restarted and keys are recovered from the server automatically. |
-| **Decommission** | Admin runs `--purge`. | ✅ **Total Cleanup.** Agent is removed locally and deleted permanently from the Manager database. |
-
-
----
-**Note**: Check the details on folder `docs/`
 
 ## 📦 Installation & Usage
 
