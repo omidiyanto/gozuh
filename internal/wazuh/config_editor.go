@@ -7,36 +7,36 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"gozuh/internal/config"
 )
 
-const (
-	OssecPath     = "C:\\Program Files (x86)\\ossec-agent"
-	OssecConfPath = OssecPath + "\\ossec.conf"
-	SCARulesPath  = OssecPath + "\\ruleset\\sca"
-	LabelKey      = "hardware_hash"
-)
+const LabelKey = "hardware_hash"
+
+func getSCARulesPath() string {
+	return filepath.Join(config.WazuhDir, "ruleset", "sca")
+}
 
 func GetHardwareLabel() (string, error) {
-	contentBytes, err := os.ReadFile(OssecConfPath)
+	contentBytes, err := os.ReadFile(config.WazuhConf)
 	if err != nil {
 		return "", err
 	}
 	content := string(contentBytes)
 	re := regexp.MustCompile(fmt.Sprintf(`<label key="%s">([^<]+)</label>`, LabelKey))
 	matches := re.FindStringSubmatch(content)
-	
+
 	if len(matches) >= 2 {
 		return matches[1], nil
 	}
-	return "", nil 
+	return "", nil
 }
 
 func DisableCISBenchmarks() error {
 	fmt.Println("[HARDENING] Disabling CIS Benchmark policies...")
 
-	files, err := filepath.Glob(filepath.Join(SCARulesPath, "cis*.y*ml"))
+	files, err := filepath.Glob(filepath.Join(getSCARulesPath(), "cis*.y*ml"))
 	if err != nil {
-		return fmt.Errorf("gagal scan folder SCA: %v", err)
+		return fmt.Errorf("failed to scan SCA folder: %v", err)
 	}
 
 	for _, file := range files {
@@ -47,58 +47,114 @@ func DisableCISBenchmarks() error {
 		newPath := file + ".disabled"
 		fmt.Printf("   -> Renaming %s to .disabled\n", filepath.Base(file))
 		if err := os.Rename(file, newPath); err != nil {
-			fmt.Printf("      [WARN] Gagal rename %s: %v\n", filepath.Base(file), err)
+			fmt.Printf("      [WARN] Failed to rename %s: %v\n", filepath.Base(file), err)
 		}
 	}
 	return nil
 }
 
 func ApplyHardening() error {
-	contentBytes, err := os.ReadFile(OssecConfPath)
+	contentBytes, err := os.ReadFile(config.WazuhConf)
 	if err != nil {
 		return err
 	}
 	content := string(contentBytes)
 
+	// Hardening 1: Disable SCA checks
 	reSCA := regexp.MustCompile(`(?s)<sca>.*?</sca>`)
 	newContent := reSCA.ReplaceAllStringFunc(content, func(m string) string {
 		return strings.Replace(m, "<disabled>no</disabled>", "<disabled>yes</disabled>", 1)
 	})
 
-	return os.WriteFile(OssecConfPath, []byte(newContent), 0644)
+	return os.WriteFile(config.WazuhConf, []byte(newContent), 0644)
 }
 
+// UPDATE: Scoped Regex untuk Agent Name
 func UpdateAgentName(newName string) error {
-	contentBytes, err := os.ReadFile(OssecConfPath)
-	if err != nil {
-		return err
-	}
+	contentBytes, err := os.ReadFile(config.WazuhConf)
+	if err != nil { return err }
 	content := string(contentBytes)
 
 	expectedTag := fmt.Sprintf("<agent_name>%s</agent_name>", newName)
-	reName := regexp.MustCompile(`<agent_name>.*?</agent_name>`)
+	
+	// 1. Cari blok <enrollment>
+	reEnrollment := regexp.MustCompile(`(?s)<enrollment>.*?</enrollment>`)
+	enrollmentBlock := reEnrollment.FindString(content)
 
 	var newContent string
-	if reName.MatchString(content) {
-		newContent = reName.ReplaceAllString(content, expectedTag)
+
+	if enrollmentBlock != "" {
+		// Operasi di dalam blok enrollment saja
+		reName := regexp.MustCompile(`<agent_name>.*?</agent_name>`)
+		var newEnrollmentBlock string
+		if reName.MatchString(enrollmentBlock) {
+			newEnrollmentBlock = reName.ReplaceAllString(enrollmentBlock, expectedTag)
+		} else {
+			newEnrollmentBlock = strings.Replace(enrollmentBlock, "</enrollment>", fmt.Sprintf("  %s\n    </enrollment>", expectedTag), 1)
+		}
+		newContent = strings.Replace(content, enrollmentBlock, newEnrollmentBlock, 1)
 	} else {
-		newContent = strings.Replace(content, "<enrollment>", "<enrollment>\n      "+expectedTag, 1)
+		// Jika <enrollment> tidak ada, inject ke <client>
+		reClient := regexp.MustCompile(`(?s)<client>.*?</client>`)
+		newContent = reClient.ReplaceAllStringFunc(content, func(m string) string {
+			if strings.Contains(m, "<enrollment>") { return m } // Safety check
+			return strings.Replace(m, "</client>", fmt.Sprintf("  <enrollment>\n      %s\n    </enrollment>\n  </client>", expectedTag), 1)
+		})
 	}
-	return os.WriteFile(OssecConfPath, []byte(newContent), 0644)
+
+	return os.WriteFile(config.WazuhConf, []byte(newContent), 0644)
+}
+
+// UPDATE: Scoped Regex untuk Group + Auto Heal Syscollector
+func UpdateAgentGroup(newGroup string) error {
+	if newGroup == "" { newGroup = "default" }
+	
+	contentBytes, err := os.ReadFile(config.WazuhConf)
+	if err != nil { return err }
+	content := string(contentBytes)
+	reEnrollment := regexp.MustCompile(`(?s)<enrollment>.*?</enrollment>`)
+	enrollmentBlock := reEnrollment.FindString(content)
+	
+	var newContent string
+	expectedTag := fmt.Sprintf("<groups>%s</groups>", newGroup)
+
+	if enrollmentBlock != "" {
+		reGroup := regexp.MustCompile(`<groups>.*?</groups>`)
+		var newEnrollmentBlock string
+		
+		if reGroup.MatchString(enrollmentBlock) {
+			newEnrollmentBlock = reGroup.ReplaceAllString(enrollmentBlock, expectedTag)
+		} else {
+			newEnrollmentBlock = strings.Replace(enrollmentBlock, "</enrollment>", fmt.Sprintf("  %s\n    </enrollment>", expectedTag), 1)
+		}
+		newContent = strings.Replace(content, enrollmentBlock, newEnrollmentBlock, 1)
+	} else {
+		reClient := regexp.MustCompile(`(?s)<client>.*?</client>`)
+		newContent = reClient.ReplaceAllStringFunc(content, func(m string) string {
+			return strings.Replace(m, "</client>", fmt.Sprintf("  <enrollment>\n      %s\n    </enrollment>\n  </client>", expectedTag), 1)
+		})
+	}
+	
+	fmt.Printf("[CONFIG] Updating Agent Group to: %s\n", newGroup)
+	return os.WriteFile(config.WazuhConf, []byte(newContent), 0644)
 }
 
 func EnsureHardwareLabel(hash string) (bool, error) {
-	contentBytes, err := os.ReadFile(OssecConfPath)
+	contentBytes, err := os.ReadFile(config.WazuhConf)
 	if err != nil { return false, err }
 	content := string(contentBytes)
+
 	correctLine := fmt.Sprintf(`<label key="%s">%s</label>`, LabelKey, hash)
+
 	if strings.Contains(content, correctLine) {
 		return false, nil
 	}
 
 	fmt.Println("[CONFIG] Fixing hardware_hash labels...")
+
 	reAnyHash := regexp.MustCompile(fmt.Sprintf(`\s*<label key="%s">.*?</label>`, LabelKey))
 	cleanContent := reAnyHash.ReplaceAllString(content, "")
+
 	var finalContent string
 	if strings.Contains(cleanContent, "</labels>") {
 		reEndLabels := regexp.MustCompile(`\s*</labels>`)
@@ -109,7 +165,7 @@ func EnsureHardwareLabel(hash string) (bool, error) {
 		finalContent = reEndConfig.ReplaceAllString(cleanContent, block)
 	}
 
-	if err := os.WriteFile(OssecConfPath, []byte(finalContent), 0644); err != nil {
+	if err := os.WriteFile(config.WazuhConf, []byte(finalContent), 0644); err != nil {
 		return false, err
 	}
 	return true, nil

@@ -4,6 +4,8 @@ import (
 	"flag"
 	"fmt"
 	"gozuh/internal/service"
+	"os"
+
 	"golang.org/x/sys/windows/svc"
 )
 
@@ -13,33 +15,56 @@ func main() {
 		runService()
 		return
 	}
+	opts := service.CLIOptions{}
+	flag.BoolVar(&opts.ActionConfigure, "configure", false, "Mode: Setup config.json only (Encryption Enabled)")
+	flag.BoolVar(&opts.ActionInstall, "install", false, "Mode: Install, Register & Harden Agent")
+	flag.StringVar(&opts.InstallerName, "name", "", "[REQUIRED for Install] Filename of the MSI (e.g. wazuh-agent.msi)")
+	flag.StringVar(&opts.InstallerSource, "installer", "", "[OPTIONAL] Local path OR HTTP URL to download MSI")
+	flag.StringVar(&opts.MgrURL, "mgr-url", "", "[REQUIRED] Wazuh Manager URL (e.g. https://192.168.1.100)")
+	flag.StringVar(&opts.MgrUser, "mgr-user", "", "[REQUIRED] API Username")
+	flag.StringVar(&opts.MgrPass, "mgr-pass", "", "[REQUIRED] API Password")
+	flag.StringVar(&opts.IdxURL, "idx-url", "", "[OPTIONAL] Indexer URL (If different from Manager)")
+	flag.StringVar(&opts.IdxUser, "idx-user", "", "[OPTIONAL] Indexer User (If different from Manager)")
+	flag.StringVar(&opts.IdxPass, "idx-pass", "", "[OPTIONAL] Indexer Pass (If different from Manager)")
+	flag.StringVar(&opts.Group, "group", "", "[OPTIONAL] Agent Group (Default: 'default')")
+	flag.BoolVar(&opts.EnableCIS, "enable-cis", false, "[OPTIONAL] Enable CIS Benchmarks (Default: Disabled)")
+	flag.BoolVar(&opts.AllowVirtual, "allow-virtual", false, "Toggle: Enable Virtual NIC Support (for VMs)")
+	flag.BoolVar(&opts.DenyVirtual, "deny-virtual", false, "Toggle: Disable Virtual NIC Support (Physical Only)")
 
-	install := flag.Bool("install", false, "Smart Installation (Recovery/Fresh)")
-	uninstall := flag.Bool("uninstall", false, "Local Uninstall (Keep Server Data)")
-	purge := flag.Bool("purge", false, "Full Decommission (Local + Server Delete)")
-	debug := flag.Bool("debug", false, "Run Diagnostics & Pre-flight Check")
-	flag.Parse()
+	debug := flag.Bool("debug", false, "Run Diagnostics & Identity Check")
+	purge := flag.Bool("purge", false, "Full Decommission (Remove from Server & Local)")
+	uninstall := flag.Bool("uninstall", false, "Local Uninstall Only")
+	stop := flag.Bool("stop", false, "Stop Gozuh & Wazuh Services")
+	restart := flag.Bool("restart", false, "Restart Gozuh & Wazuh Services")
+	help := flag.Bool("help", false, "Show this help guide")
 
-	if *debug {
-		service.RunDebug()
-		return
-	}
-
-	if *purge {
-		service.RunPurge()
-		return
-	}
-
-	if *install {
-		service.RunInstall()
-		return
-	} 
-	
-	if *uninstall {
-		service.RunUninstall()
-	} else {
+	flag.Usage = func() {
 		printBanner()
 	}
+	flag.Parse()
+	if *help { printBanner(); return }
+	if *debug { service.RunDebug(); return }
+	if *purge { service.RunPurge(); return }
+	if *uninstall { service.RunUninstall(); return }
+	if *stop { service.RunServiceControl("stop"); return }
+	if *restart { service.RunServiceControl("restart"); return }
+
+	if opts.ActionConfigure {
+		service.RunConfigure(opts)
+		return
+	}
+
+	if opts.ActionInstall {
+		if opts.InstallerName == "" {
+			fmt.Println("\n[ERROR] Missing required flag: --name")
+			fmt.Println("You MUST specify the MSI filename (e.g., --name wazuh-agent.msi)")
+			fmt.Println("Run 'gozuh.exe --help' for examples.")
+			os.Exit(1)
+		}
+		service.RunInstall(opts)
+		return
+	}
+	printBanner()
 }
 
 func runService() {
@@ -47,11 +72,66 @@ func runService() {
 }
 
 func printBanner() {
-	fmt.Println("GOZUH - Wazuh Agent Companion")
-	fmt.Println("----------------------------------")
-	fmt.Println("Flags:")
-	fmt.Println("  --install   : Smart Install & Register (Bootstrap)")
-	fmt.Println("  --uninstall : Local Uninstall only")
-	fmt.Println("  --purge     : Full Decommission (Delete on Server & Local)")
-	fmt.Println("  --debug     : Show Identity & Server Connection Status")
+	fmt.Println(`
+==============================================================================
+   GOZUH - Enterprise Wazuh Agent Companion
+==============================================================================
+
+USAGE:
+  gozuh.exe [ACTION] [FLAGS...]
+
+------------------------------------------------------------------------------
+ 1. CONFIGURATION MODE (--configure)
+    Creates an encrypted 'config.json'. Safe to run repeatedly (Idempotent).
+    
+    REQUIRED FLAGS:
+      --mgr-url   : Wazuh Manager URL (e.g. https://192.168.0.10)
+      --mgr-user  : API Username
+      --mgr-pass  : API Password
+
+    OPTIONAL FLAGS:
+      --group     : Agent Group (Default: default)
+      --idx-url   : Indexer URL (if different from Manager)
+      --allow-virtual : Enable support for Virtual Machines (Hyper-V/VMware)
+
+------------------------------------------------------------------------------
+ 2. INSTALLATION MODE (--install)
+    Downloads (if needed), Installs MSI, Registers Agent, and Hardens Config.
+
+    REQUIRED FLAGS:
+      --name      : The exact filename of the MSI (e.g. wazuh-agent-4.14.msi)
+                    (This file must exist locally OR be downloadable)
+
+    OPTIONAL FLAGS:
+      --installer : Path to local file OR HTTP URL to download.
+                    (If skipped, Gozuh looks for '--name' in current folder)
+      --enable-cis: Skip disabling CIS Benchmark policies.
+
+------------------------------------------------------------------------------
+ 3. UTILITY COMMANDS
+    --debug       : Show Hardware Identity (UUID, Serial, MAC Hash) & API Status
+    --stop        : Stop Gozuh & Wazuh services safely
+    --restart     : Restart services (Triggers Watchdog)
+    --uninstall   : Remove Service & Uninstall Agent (Keep Config)
+    --purge       : Uninstall + Delete Agent from Wazuh Server (Clean Wipe)
+
+==============================================================================
+ EXAMPLES (Copy & Paste):
+==============================================================================
+
+  [SCENARIO A] Configure First, Then Install (Recommended)
+    1. Setup Config:
+       gozuh.exe --configure --mgr-url https://10.0.0.5 --mgr-user admin --mgr-pass Secret123
+
+    2. Run Install (Uses config above):
+       gozuh.exe --install --name wazuh-agent-4.14.1.msi
+
+  [SCENARIO B] One-Liner Download & Install
+       gozuh.exe --install --group default --name wazuh-agent-4.14.1-1.msi --installer "https://packages.wazuh.com/4.x/windows/wazuh-agent-4.14.1-1.msi" --mgr-url https://192.168.0.230:55000 --mgr-user wazuh-wui --mgr-pass "MyS3cr37P450r.*-" --idx-url https://192.168.0.230:9200 --idx-user admin --idx-pass "SecretPassword"
+
+  [SCENARIO C] Enable Virtual Machine Support (Hyper-V / VirtualBox)
+       gozuh.exe --configure --allow-virtual
+       gozuh.exe --debug
+
+==============================================================================`)
 }

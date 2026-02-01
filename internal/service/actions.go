@@ -29,6 +29,7 @@ func (e *Executor) ExecuteDecision(d Decision, ctx *AgentContext) {
 			Hostname:     ctx.TargetName,
 		})
 		wazuh.EnsureHardwareLabel(ctx.Hardware.Hash)
+		wazuh.UpdateAgentName(ctx.TargetName)
 		sys.RestartWazuhAgent()
 		log.Println("[SUCCESS] Configuration Repaired.")
 
@@ -41,14 +42,11 @@ func (e *Executor) ExecuteDecision(d Decision, ctx *AgentContext) {
 		os.Remove(config.WazuhClientKey)
 		e.performRecovery(ctx)
 
-	case ActionRename, ActionSelfHeal:
+	case ActionRename, ActionSelfHeal, ActionGroupMismatch:
 		log.Printf("[ACTION] Executing %s sequence...", d)
 		if ctx.LocalID != "" {
-			if d == ActionRename {
-				e.API.DeleteAgent(ctx.LocalID)
-			}
+			e.API.DeleteAgent(ctx.LocalID)
 		}
-		
 		os.Remove(config.WazuhClientKey)
 		e.performRecovery(ctx)
 
@@ -59,8 +57,7 @@ func (e *Executor) ExecuteDecision(d Decision, ctx *AgentContext) {
 }
 
 func (e *Executor) performRecovery(ctx *AgentContext) {
-	sys.StopWazuhService()
-
+	sys.StopService(config.WazuhService)
 	candidates, err := e.API.GetAgentCandidates(ctx.TargetHash)
 	var recoveryID, recoveryKey string
 
@@ -71,37 +68,42 @@ func (e *Executor) performRecovery(ctx *AgentContext) {
 			verified, _ := e.API.VerifyHashInIndexer(c.ID, ctx.Hardware.Hash)
 			if verified {
 				log.Printf("[RECOVERY] Found history match: %s (ID: %s)", c.Name, c.ID)
-				if c.Name != ctx.TargetName {
-					log.Println("[RECOVERY] Name mismatch on recovery. Deleting old record first.")
+				groupMatch := false
+				if len(c.Group) == 0 && (ctx.TargetGroup == "default" || ctx.TargetGroup == "") {
+					groupMatch = true
+				} else {
+					for _, g := range c.Group {
+						if g == ctx.TargetGroup { groupMatch = true; break }
+					}
+				}
+
+				if c.Name != ctx.TargetName || !groupMatch {
+					log.Printf("[RECOVERY] Mismatch detected (Name or Group). Deleting old record %s...", c.ID)
 					e.API.DeleteAgent(c.ID)
-					break
+					continue 
 				} else {
 					key, kErr := e.API.GetAgentKey(c.ID)
 					if kErr == nil {
-						recoveryID = c.ID
-						recoveryKey = key
+						recoveryID, recoveryKey = c.ID, key
 					}
+					break 
 				}
-				break
 			}
 		}
 	}
 
-	if recoveryID != "" && recoveryKey != "" {
-		rawKey, _ := base64.StdEncoding.DecodeString(recoveryKey)
-		os.WriteFile(config.WazuhClientKey, rawKey, 0644)
-		log.Println("[SUCCESS] Identity Restored from Server.")
+	if recoveryID != "" {
+		raw, _ := base64.StdEncoding.DecodeString(recoveryKey)
+		os.WriteFile(config.WazuhClientKey, raw, 0644)
+		log.Println("[SUCCESS] Identity Restored.")
 	} else {
-		log.Println("[FRESH] No history found. Treating as new agent.")
+		log.Println("[FRESH] No valid history found. Registering new agent...")
+		wazuh.UpdateAgentGroup(ctx.TargetGroup) 
+		
 		wazuh.UpdateAgentName(ctx.TargetName)
 	}
 
 	wazuh.EnsureHardwareLabel(ctx.Hardware.Hash)
-	wazuh.UpdateAgentName(ctx.TargetName)
 	sys.RestartWazuhAgent()
-
-	config.SaveState(&config.State{
-		HardwareHash: ctx.Hardware.Hash,
-		Hostname:     ctx.TargetName,
-	})
+	config.SaveState(&config.State{HardwareHash: ctx.Hardware.Hash, Hostname: ctx.TargetName})
 }

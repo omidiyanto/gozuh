@@ -8,106 +8,81 @@ import (
 	"golang.org/x/sys/windows/svc"
 	"golang.org/x/sys/windows/svc/mgr"
 )
-
-const WazuhServiceName = "WazuhSvc"
-const GozuhServiceName = "GOZUH"
-
 func GetServiceStatus(name string) string {
 	m, err := mgr.Connect()
-	if err != nil {
-		return "SCM_UNAVAILABLE"
-	}
+	if err != nil { return "SCM_UNAVAILABLE" }
 	defer m.Disconnect()
 
 	s, err := m.OpenService(name)
-	if err != nil {
-		return "NOT_INSTALLED"
-	}
+	if err != nil { return "NOT_INSTALLED" }
 	defer s.Close()
 
 	status, err := s.Query()
-	if err != nil {
-		return "QUERY_FAILED"
-	}
+	if err != nil { return "QUERY_FAILED" }
 
 	switch status.State {
-	case svc.Stopped:
-		return "STOPPED"
-	case svc.StartPending:
-		return "START_PENDING"
-	case svc.StopPending:
-		return "STOP_PENDING"
-	case svc.Running:
-		return "RUNNING"
-	default:
-		return "UNKNOWN"
+	case svc.Stopped: return "STOPPED"
+	case svc.StartPending: return "START_PENDING"
+	case svc.StopPending: return "STOP_PENDING"
+	case svc.Running: return "RUNNING"
+	default: return "UNKNOWN"
 	}
 }
 
 func ConnectService(name string) (*mgr.Service, error) {
 	m, err := mgr.Connect()
-	if err != nil {
-		return nil, fmt.Errorf("gagal connect SCM: %v", err)
-	}
+	if err != nil { return nil, fmt.Errorf("failed to connect SCM: %v", err) }
 	defer m.Disconnect()
 	return m.OpenService(name)
 }
 
 func IsServiceRunning() (bool, error) {
 	m, err := mgr.Connect()
-	if err != nil {
-		return false, nil
-	}
+	if err != nil { return false, nil }
 	defer m.Disconnect()
-	s, err := m.OpenService(WazuhServiceName)
-	if err != nil {
-		return false, nil
-	}
+	s, err := m.OpenService(config.WazuhService)
+	if err != nil { return false, nil }
 	defer s.Close()
 	status, err := s.Query()
 	return status.State == svc.Running, nil
 }
 
-func StopWazuhService() error {
+func StopService(serviceName string) error {
 	m, err := mgr.Connect()
 	if err != nil { return err }
 	defer m.Disconnect()
-	
-	s, err := m.OpenService(config.WazuhService)
+
+	s, err := m.OpenService(serviceName)
 	if err != nil { return err }
 	defer s.Close()
-	
+
 	status, _ := s.Query()
 	if status.State == svc.Running {
 		s.Control(svc.Stop)
-		time.Sleep(2 * time.Second)
+		for i := 0; i < 10; i++ {
+			status, _ = s.Query()
+			if status.State == svc.Stopped { return nil }
+			time.Sleep(1 * time.Second)
+		}
 	}
 	return nil
 }
 
-func RestartWazuhAgent() error {
+func StartService(serviceName string) error {
 	m, err := mgr.Connect()
-	if err != nil {
-		return err
-	}
+	if err != nil { return err }
 	defer m.Disconnect()
-	s, err := m.OpenService(WazuhServiceName)
-	if err != nil {
-		return err
-	}
+
+	s, err := m.OpenService(serviceName)
+	if err != nil { return err }
 	defer s.Close()
-	status, err := s.Query()
-	if err == nil && status.State == svc.Running {
-		s.Control(svc.Stop)
-		for i := 0; i < 15; i++ {
-			status, _ = s.Query()
-			if status.State == svc.Stopped {
-				break
-			}
-			time.Sleep(1 * time.Second)
-		}
-	}
+
 	return s.Start()
+}
+
+func RestartWazuhAgent() error {
+	StopService(config.WazuhService)
+	return StartService(config.WazuhService)
 }
 
 func InstallGozuhService() error {
@@ -118,35 +93,32 @@ func InstallGozuhService() error {
 	if err != nil { return err }
 	defer m.Disconnect()
 
-	s, err := m.OpenService(GozuhServiceName)
+	s, err := m.OpenService(config.GozuhService)
 	if err == nil {
 		s.Close()
 		return nil 
 	}
 
-	config := mgr.Config{
+	c := mgr.Config{
 		StartType:    mgr.StartAutomatic,
-		DisplayName:  "Wazuh | Gozuh - Agent Companion for Wazuh",
+		DisplayName:  "Wazuh | Gozuh - Wazuh Agent Companion",
 		Description:  "Smart Wazuh Agent Lifecycle Manager",
 		ErrorControl: mgr.ErrorNormal,
 	}
 
-	s, err = m.CreateService(GozuhServiceName, exePath, config)
+	s, err = m.CreateService(config.GozuhService, exePath, c)
 	if err != nil { return err }
 	defer s.Close()
 	return nil
 }
 
 func StartGozuhService() error {
-	m, err := mgr.Connect()
-	if err != nil { return err }
-	defer m.Disconnect()
+	return StartService(config.GozuhService)
+}
 
-	s, err := m.OpenService(GozuhServiceName)
-	if err != nil { return err }
-	defer s.Close()
-
-	return s.Start()
+func RestartGozuhService() error {
+	StopService(config.GozuhService)
+	return StartService(config.GozuhService)
 }
 
 func RemoveGozuhService() error {
@@ -154,8 +126,8 @@ func RemoveGozuhService() error {
 	if err != nil { return err }
 	defer m.Disconnect()
 
-	s, err := m.OpenService(GozuhServiceName)
-	if err != nil { return nil } 
+	s, err := m.OpenService(config.GozuhService)
+	if err != nil { return nil }
 	defer s.Close()
 
 	s.Control(svc.Stop)

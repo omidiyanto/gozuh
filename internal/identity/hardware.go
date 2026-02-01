@@ -3,7 +3,6 @@ package identity
 import (
 	"crypto/sha256"
 	"fmt"
-	"net"
 	"sort"
 	"strings"
 
@@ -11,10 +10,11 @@ import (
 )
 
 type HardwareInfo struct {
-	UUID   string
-	Serial string
-	MAC    string
-	Hash   string
+	UUID    string
+	Serial  string
+	MACList []string
+	MACHash string
+	Hash    string
 }
 
 type Win32_ComputerSystemProduct struct {
@@ -25,7 +25,15 @@ type Win32_BIOS struct {
 	SerialNumber string
 }
 
-func GetIdentity() (*HardwareInfo, error) {
+type Win32_NetworkAdapter struct {
+	MACAddress      string
+	PNPDeviceID     string
+	Description     string
+	AdapterType     string
+	PhysicalAdapter bool
+}
+
+func GetIdentity(allowVirtual bool) (*HardwareInfo, error) {
 	var uuid, serial string
 
 	var csp []Win32_ComputerSystemProduct
@@ -38,36 +46,65 @@ func GetIdentity() (*HardwareInfo, error) {
 		serial = strings.TrimSpace(bios[0].SerialNumber)
 	}
 
-	mac, _ := getPrimaryMAC()
+	macList, macString := getRobustMAC(allowVirtual)
+	
+	macHashBytes := sha256.Sum256([]byte(macString))
+	macHash := fmt.Sprintf("%x", macHashBytes)
 
-	rawString := fmt.Sprintf("%s-%s-%s", uuid, serial, mac)
+	rawString := fmt.Sprintf("%s-%s-%s", uuid, serial, macString)
 	hashBytes := sha256.Sum256([]byte(rawString))
 
 	return &HardwareInfo{
-		UUID:   uuid,
-		Serial: serial,
-		MAC:    mac,
-		Hash:   fmt.Sprintf("%x", hashBytes),
+		UUID:    uuid,
+		Serial:  serial,
+		MACList: macList,
+		MACHash: macHash,
+		Hash:    fmt.Sprintf("%x", hashBytes),
 	}, nil
 }
 
-func getPrimaryMAC() (string, error) {
-	interfaces, err := net.Interfaces()
-	if err != nil {
-		return "", err
+func getRobustMAC(allowVirtual bool) ([]string, string) {
+	var adapters []Win32_NetworkAdapter
+	query := "SELECT MACAddress, PNPDeviceID, Description, AdapterType, PhysicalAdapter FROM Win32_NetworkAdapter WHERE MACAddress IS NOT NULL"
+	if err := wmi.Query(query, &adapters); err != nil {
+		return []string{"ERROR"}, "00:00:00:00:00:00"
 	}
-	var macs []string
-	for _, i := range interfaces {
-		if i.Flags&net.FlagLoopback != 0 || i.Flags&net.FlagUp == 0 {
+
+	var validMACs []string
+
+	for _, adapter := range adapters {
+		pnp := strings.ToUpper(adapter.PNPDeviceID)
+		desc := strings.ToUpper(adapter.Description)
+
+		if strings.HasPrefix(pnp, "USB\\") {
 			continue
 		}
-		if len(i.HardwareAddr) > 0 {
-			macs = append(macs, i.HardwareAddr.String())
+
+		if !allowVirtual {
+			if !adapter.PhysicalAdapter {
+				continue
+			}
+			if strings.Contains(desc, "VIRTUAL") ||
+				strings.Contains(desc, "VPN") ||
+				strings.Contains(desc, "LOOPBACK") ||
+				strings.Contains(desc, "VMWARE") ||
+				strings.Contains(desc, "VIRTUALBOX") ||
+				strings.Contains(desc, "HYPER-V") {
+				continue
+			}
+		}
+
+		mac := strings.ToUpper(strings.TrimSpace(adapter.MACAddress))
+		if mac != "" {
+			validMACs = append(validMACs, mac)
 		}
 	}
-	if len(macs) == 0 {
-		return "00:00:00:00:00:00", nil
+
+	if len(validMACs) == 0 {
+		return []string{"NO_VALID_NIC"}, "00:00:00:00:00:00"
 	}
-	sort.Strings(macs)
-	return macs[0], nil
+
+	sort.Strings(validMACs)
+	combined := strings.Join(validMACs, "|")
+	return validMACs, combined
 }

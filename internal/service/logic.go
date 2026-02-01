@@ -37,10 +37,25 @@ func EvaluateState(ctx *AgentContext) Decision {
 			return ActionRename
 		}
 	}
+	groupMatch := false
+	if len(ctx.ServerAgent.Group) > 0 {
+		for _, g := range ctx.ServerAgent.Group {
+			if strings.EqualFold(g, ctx.TargetGroup) {
+				groupMatch = true
+				break
+			}
+		}
+	} else if ctx.TargetGroup == "default" {
+		groupMatch = true
+	}
+
+	if !groupMatch {
+		log.Printf("[DIAGNOSE] Case H: Group Mismatch. Target: %s vs Server: %v", ctx.TargetGroup, ctx.ServerAgent.Group)
+		return ActionGroupMismatch
+	}
 	if ctx.SvcRunning && strings.ToLower(ctx.ServerAgent.Status) == "disconnected" {
-		lastKeepAlive := ctx.ServerAgent.LastKeepAlive
-		if lastKeepAlive == "" || isOutdated(lastKeepAlive, 24*time.Hour) {
-			log.Println("[DIAGNOSE] Case G: Zombie Agent. Service running but disconnected > 24h.")
+		if isOutdated(ctx.ServerAgent.LastKeepAlive, 24*time.Hour) {
+			log.Println("[DIAGNOSE] Case G: Zombie Agent.")
 			return ActionRestartSvc
 		}
 	}
@@ -54,5 +69,5 @@ func isOutdated(timeStr string, threshold time.Duration) bool {
 		t, err := time.Parse(f, timeStr)
 		if err == nil { return time.Since(t) > threshold }
 	}
-	return false 
+	return false
 }

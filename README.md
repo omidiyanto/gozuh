@@ -8,7 +8,7 @@
   <b>Lightweight. Secure. Persistent. Automated. Smart.</b>
 </p>
 
-**Gozuh** is a sophisticated **Wazuh Agent Companion** written in Go. It acts as an intelligent watchdog and lifecycle manager for Wazuh Agents on Windows, ensuring that identity persistence, self-healing, and disaster recovery are handled automatically based on a strict decision matrix.
+**Gozuh** is a sophisticated **Wazuh Agent Companion** written in Go. It acts as an intelligent watchdog and lifecycle manager for Wazuh Agents on Windows, ensuring that identity persistence, self-healing, configuration enforcement, and disaster recovery are handled automatically based on a strict decision matrix.
 
 ---
 
@@ -16,17 +16,20 @@
 Standard agent deployments often suffer from:
 * **Identity Fragmentation:** Re-imaging creates duplicate IDs.
 * **Zombie Records:** Renaming leaves "disconnected" ghost entries.
+* **Config Drift:** Agents moved to different departments (Groups) don't update on the server.
 * **Stealth Failures:** Service stops or config tampering goes unnoticed.
 * **Cloning Conflicts:** Cloned OS disks carry over old keys, causing collisions.
 
 ## 🛡️ The Gozuh Solution
-Gozuh binds the Wazuh identity to the **Hardware**, not the OS. It uses a unique **Hardware Hash** derived from the Motherboard UUID, BIOS Serial, and Primary MAC Address.
+Gozuh binds the Wazuh identity to the **Hardware**, not the OS. It uses a unique **Hardware Hash** derived from the Motherboard UUID, BIOS Serial, and Physical NIC MAC Address List.
+
+It enforces **Infrastructure as Code (IaC)** principles at the endpoint level: **The Local Configuration is the Single Source of Truth.**
 
 ---
 
 ## 🧠 The Brain: Logic Matrix (Truth Table)
 
-Gozuh is engineered to handle "Day 2" operational chaos automatically by runs a continuous reconciliation loop. It compares the **Local State** against the **Server State** to determine the exact scenario and the appropriate self-healing action.
+Gozuh runs a continuous reconciliation loop (Watchdog). It compares the **Local State** (`config.json` + Hardware) against the **Server State** (API) to determine the exact scenario.
 
 | Scenario | API Connection | Server Status | Local Status | Diagnosis | Action Taken |
 | :--- | :--- | :--- | :--- | :--- | :--- |
@@ -37,10 +40,9 @@ Gozuh is engineered to handle "Day 2" operational chaos automatically by runs a 
 | **[Case E: Rename](docs/case-e.md)** | ✅ Healthy | ✅ Name Mismatch | ⚠️ Name Changed | **Hostname Change** | 🏷️ **Update Name.** Delete old record -> Re-register with new name. |
 | **[Case F: Corrupt](docs/case-f.md)** | ✅ Healthy | ✅ Active | ❌ Key/Config Bad | **Local Corruption** | 🚑 **Recovery.** Fix Config -> Restore Key from Server. |
 | **[Case G: Zombie](docs/case-g.md)** | ✅ Healthy | ⚠️ Disconnected | ✅ Service Running | **Service Hang** | ⚡ **Restart.** Force restart WazuhSvc to refresh socket. |
+| **[Case H: Drift](docs/case-h.md)** | ✅ Healthy | ✅ Group Mismatch | ✅ Group Changed | **Config Drift** | 👮 **Enforce Group.** Delete old record -> Register to new Group. |
 
 ---
-**Note**: Check the details on folder `docs/`
-
 
 ## ⚙️ Technical Workflow
 
@@ -66,97 +68,117 @@ graph TD
     CheckHash -- Yes --> CheckName{🏷️ Name Match?}
     CheckName -- No --> Rename([📝 Case E: Rename])
     
-    CheckName -- Yes --> CheckStatus{💓 Status OK?}
+    CheckName -- Yes --> CheckGroup{Tg Group Match?}
+    CheckGroup -- No --> Drift([👮 Case H: Enforce Group])
+    
+    CheckGroup -- Yes --> CheckStatus{💓 Status OK?}
     CheckStatus -- No --> Zombie([⚡ Case G: Restart])
     
     CheckStatus -- Yes --> Idle([💤 Case A: Idle])
+
 ```
+
 ---
 
 ## 📦 Installation & Usage
 
-### 1. Deployment Package
+Gozuh separates configuration from installation for better automation.
 
-Place the following in your deployment folder (e.g., for PDQ Deploy or Ansible):
+### 1. Configuration Mode (`--configure`)
 
-* `gozuh.exe` (The compiled binary)
-* `wazuh-agent-4.14.1-1.msi` (Original installer)
-* `config.json` (Your server settings)
-
-### 2. Commands
-
-#### 🟢 Smart Install (Idempotent)
-
-The main command for mass deployment. It only installs or repairs if the system is not healthy.
+Sets up the encrypted `config.json`. This is idempotent (safe to run multiple times).
 
 ```powershell
-.\gozuh.exe --install
+# Basic Setup
+.\gozuh.exe --configure `
+  --mgr-url "[https://192.168.1.100](https://192.168.1.100)" `
+  --mgr-user "admin" --mgr-pass "SecretPassword" `
+  --group "Production"
+
+# Enable Virtual Machine NIC Support (Hyper-V/VMware)
+.\gozuh.exe --configure --allow-virtual
 
 ```
 
-#### 🟡 Local Uninstall
+### 2. Installation Mode (`--install`)
 
-Removes Gozuh and the Wazuh Agent locally but **keeps** the record on the server for future recovery.
+Downloads (if needed), installs the MSI, registers the agent, and hardens the config.
+
+**Requirement:** You must provide the MSI filename using `--name`.
 
 ```powershell
-.\gozuh.exe --uninstall
+# Scenario A: Local File Exists
+.\gozuh.exe --install --name "wazuh-agent-4.14.1.msi"
+
+# Scenario B: Download from URL (Auto-download if missing)
+.\gozuh.exe --install --group default --name wazuh-agent-4.14.1-1.msi `
+  --installer "https://packages.wazuh.com/4.x/windows/wazuh-agent-4.14.1-1.msi" `
+  --mgr-url https://192.168.0.230:55000 --mgr-user wazuh-wui --mgr-pass "MyS3cr37P450r.*-" `
+  --idx-url https://192.168.0.230:9200 --idx-user admin --idx-pass "SecretPassword"
 
 ```
 
-#### 🔴 Full Purge (Decommission)
+### 3. Utility Commands
 
-Removes the agent locally and **permanently deletes** the agent record from the Wazuh Manager.
-
-```powershell
-.\gozuh.exe --purge
-
-```
-
-#### 🔵 Debug / Pre-flight
-
-Analyzes hardware identity and server connectivity without making any changes.
-
-```powershell
-.\gozuh.exe --debug
-
-```
+| Command | Description |
+| --- | --- |
+| `--debug` | Display Hardware Identity (UUID, Serial, MAC Hash) & Connectivity Status. |
+| `--stop` | Stop Gozuh & Wazuh services safely. |
+| `--restart` | Restart services (Triggers immediate reconciliation). |
+| `--uninstall` | Remove Gozuh Service & Uninstall Agent (Keeps `config.json`). |
+| `--purge` | **Full Wipe.** Decommission agent from Server & Uninstall locally. |
 
 ---
 
 ## ⚙️ Configuration (`config.json`)
 
-The `config.json` must reside in `C:\Program Files\GOZUH\`.
+The configuration file is stored in `C:\Program Files\GOZUH\config.json`. Passwords are stored using **AES Encryption**.
 
 ```json
 {
-  "wazuh_url": "https://192.168.13.230:55000",
-  "api_user": "wazuh-wui",
-  "api_pass": "YourSecretPassword",
-  "indexer_url": "https://192.168.13.230:9200",
+  "manager_url": "[https://192.168.0.230:55000](https://192.168.0.230:55000)",
+  "manager_user": "wazuh-wui",
+  "manager_pass": "U2FsdGVkX1+...",
+  "indexer_url": "[https://192.168.0.230:9200](https://192.168.0.230:9200)",
   "indexer_user": "admin",
-  "indexer_pass": "YourIndexerPassword",
+  "indexer_pass": "U2FsdGVkX1+...",
+  "agent_group": "default",
+  "installer_name": "wazuh-agent-4.14.1-1.msi",
+  "disable_cis": true,
+  "allow_virtual": false,
   "sync_interval": 60
 }
 
 ```
 
+### Features Highlight
+
+* **Virtual NIC Support:** Use `--allow-virtual` (or set in config) to support VMs. By default, Gozuh ignores virtual adapters to prevent identity spoofing.
+* **Log Rotation:** `service.log` is automatically rotated and cleaned (keeps last 3 days) on service startup to save disk space.
+* **Smart Download:** The installer is only downloaded if it doesn't exist locally in the Gozuh directory.
+
 ---
 
 ## 🏗️ Building from Source
 
-To build the final binary with the icon and professional metadata:
+To build the final binary with embedded encryption keys and metadata:
 
-1. **Generate Resource Properties:**
+1. **Generate Resource Properties (Icon/Version):**
 ```bash
 cd cmd/gozuh
 goversioninfo
+
 ```
 
 
-3. **Compile:**
+2. **Compile with Key Injection:**
+*Replace `SUPER_SECRET_KEY...` with your own 32-byte key for AES encryption.*
 ```bash
-go build -ldflags="-s -w" -o gozuh.exe ./cmd/gozuh
+go build -ldflags="-X 'gozuh/internal/config.EncryptionKey=SUPER_SECRET_KEY_123456789012' -s -w" -o gozuh.exe ./cmd/gozuh
+
 ```
+
+
 
 ---
 
