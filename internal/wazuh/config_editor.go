@@ -60,16 +60,14 @@ func ApplyHardening() error {
 	}
 	content := string(contentBytes)
 
-	// Hardening 1: Disable SCA checks
 	reSCA := regexp.MustCompile(`(?s)<sca>.*?</sca>`)
 	newContent := reSCA.ReplaceAllStringFunc(content, func(m string) string {
-		return strings.Replace(m, "<disabled>no</disabled>", "<disabled>yes</disabled>", 1)
+		return strings.Replace(m, "<disabled>yes</disabled>", "<disabled>no</disabled>", 1)
 	})
 
 	return os.WriteFile(config.WazuhConf, []byte(newContent), 0644)
 }
 
-// UPDATE: Scoped Regex untuk Agent Name
 func UpdateAgentName(newName string) error {
 	contentBytes, err := os.ReadFile(config.WazuhConf)
 	if err != nil { return err }
@@ -77,14 +75,12 @@ func UpdateAgentName(newName string) error {
 
 	expectedTag := fmt.Sprintf("<agent_name>%s</agent_name>", newName)
 	
-	// 1. Cari blok <enrollment>
 	reEnrollment := regexp.MustCompile(`(?s)<enrollment>.*?</enrollment>`)
 	enrollmentBlock := reEnrollment.FindString(content)
 
 	var newContent string
 
 	if enrollmentBlock != "" {
-		// Operasi di dalam blok enrollment saja
 		reName := regexp.MustCompile(`<agent_name>.*?</agent_name>`)
 		var newEnrollmentBlock string
 		if reName.MatchString(enrollmentBlock) {
@@ -94,10 +90,9 @@ func UpdateAgentName(newName string) error {
 		}
 		newContent = strings.Replace(content, enrollmentBlock, newEnrollmentBlock, 1)
 	} else {
-		// Jika <enrollment> tidak ada, inject ke <client>
 		reClient := regexp.MustCompile(`(?s)<client>.*?</client>`)
 		newContent = reClient.ReplaceAllStringFunc(content, func(m string) string {
-			if strings.Contains(m, "<enrollment>") { return m } // Safety check
+			if strings.Contains(m, "<enrollment>") { return m }
 			return strings.Replace(m, "</client>", fmt.Sprintf("  <enrollment>\n      %s\n    </enrollment>\n  </client>", expectedTag), 1)
 		})
 	}
@@ -105,7 +100,6 @@ func UpdateAgentName(newName string) error {
 	return os.WriteFile(config.WazuhConf, []byte(newContent), 0644)
 }
 
-// UPDATE: Scoped Regex untuk Group + Auto Heal Syscollector
 func UpdateAgentGroup(newGroup string) error {
 	if newGroup == "" { newGroup = "default" }
 	
