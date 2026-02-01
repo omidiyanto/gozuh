@@ -21,7 +21,7 @@ Standard agent deployments often suffer from:
 * **Cloning Conflicts:** Cloned OS disks carry over old keys, causing collisions.
 
 ## 🛡️ The Gozuh Solution
-Gozuh binds the Wazuh identity to the **Hardware**, not the OS. It uses a unique **Hardware Hash** derived from the Motherboard UUID, BIOS Serial, and Primary MAC Address.
+Gozuh binds the Wazuh identity to the **Hardware**, not the OS. It uses a unique **Hardware Hash** derived from the Motherboard UUID, BIOS Serial, and Physical NIC MAC Address List.
 
 It enforces **Infrastructure as Code (IaC)** principles at the endpoint level: **The Local Configuration is the Single Source of Truth.**
 
