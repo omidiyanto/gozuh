@@ -187,7 +187,14 @@ func runBootstrap(conf *config.Config, installerPath string) {
 		}
 
 		if match {
-			if c.Name != targetName {
+			groupMatch := false
+			for _, g := range c.Group {
+				if strings.EqualFold(g, conf.AgentGroup) { groupMatch = true; break }
+			}
+			if conf.AgentGroup == "default" && len(c.Group) == 0 { groupMatch = true }
+
+			if c.Name != targetName || !groupMatch {
+				fmt.Printf("   -> MISMATCH Detected (Name or Group). Deleting ID: %s\n", c.ID)
 				api.DeleteAgent(c.ID)
 			} else {
 				key, err := api.GetAgentKey(c.ID)

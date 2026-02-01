@@ -30,9 +30,14 @@ func (m *GozuhService) Execute(args []string, r <-chan svc.ChangeRequest, change
 
 func (m *GozuhService) RunLoop() {
 	SetupServiceLogging()
-	log.Println("Gozuh Service Started.")
+	log.Println("[GOZUH] Service Started.")
 
 	for {
+		fInfo, err := os.Stat(config.ServiceLogFile)
+        if err == nil && fInfo.Size() > 100*1024*1024 {
+             log.Println("[MAINTENANCE] Log file too large. Rotating...")
+             SetupServiceLogging() 
+        }
 		conf, _ := config.LoadConfig()
 		api := wazuh.NewClient(conf.ManagerURL, conf.IndexerURL, conf.ManagerUser, conf.ManagerPass, conf.IndexerUser, conf.IndexerPass)
 		executor := &Executor{API: api, Conf: conf}
@@ -48,17 +53,16 @@ func buildContext(api *wazuh.Client, conf *config.Config) *AgentContext {
 	ctx := &AgentContext{}
 	hw, err := identity.GetIdentity(conf.AllowVirtual)
 	if err != nil {
-		log.Printf("Hardware scan failed: %v", err)
+		log.Printf("[ERR] Hardware scan failed: %v", err)
 		return ctx
 	}
 	ctx.Hardware = hw
 	suffix := "0000000000"
-	if len(hw.Hash) > 10 {
-		suffix = hw.Hash[len(hw.Hash)-10:]
-	}
+	if len(hw.Hash) > 10 { suffix = hw.Hash[len(hw.Hash)-10:] }
 	host, _ := os.Hostname()
 	ctx.TargetName = host + "-" + suffix
 	ctx.TargetHash = suffix
+	ctx.TargetGroup = conf.AgentGroup 
 
 	ctx.SvcRunning, _ = sys.IsServiceRunning()
 	id, name, err := wazuh.GetLocalAuth()
