@@ -75,25 +75,26 @@ func getRobustMAC(allowVirtual bool) ([]string, string) {
 	for _, adapter := range adapters {
 		pnp := strings.ToUpper(adapter.PNPDeviceID)
 		desc := strings.ToUpper(adapter.Description)
-
-		if strings.HasPrefix(pnp, "USB\\") {
-			continue
-		}
-
+		if strings.HasPrefix(pnp, "USB\\") { continue } 
+		if strings.Contains(desc, "VPN") { continue }
+		if strings.Contains(desc, "LOOPBACK") { continue }
+		if strings.Contains(desc, "WI-FI DIRECT") { continue }
 		if !allowVirtual {
 			if !adapter.PhysicalAdapter {
 				continue
 			}
-			if strings.Contains(desc, "VIRTUAL") ||
-				strings.Contains(desc, "VPN") ||
-				strings.Contains(desc, "LOOPBACK") ||
-				strings.Contains(desc, "VMWARE") ||
-				strings.Contains(desc, "VIRTUALBOX") ||
-				strings.Contains(desc, "HYPER-V") {
+			if strings.Contains(desc, "VIRTUAL") || 
+			   strings.Contains(desc, "HYPER-V") || 
+			   strings.Contains(desc, "VMWARE") ||       
+			   strings.Contains(desc, "VIRTUALBOX") ||   
+			   strings.Contains(desc, "MULTIPLEXOR") ||  
+			   strings.Contains(desc, "TAP-WINDOWS") {  
 				continue
 			}
 		}
-
+		if allowVirtual {
+			if strings.Contains(desc, "DEFAULT SWITCH") { continue }
+		}
 		mac := strings.ToUpper(strings.TrimSpace(adapter.MACAddress))
 		if mac != "" {
 			validMACs = append(validMACs, mac)
