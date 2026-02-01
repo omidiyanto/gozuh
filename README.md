@@ -82,7 +82,7 @@ graph TD
 
 ## 📦 Installation & Usage
 
-Gozuh v1.3+ separates configuration from installation for better automation.
+Gozuh separates configuration from installation for better automation.
 
 ### 1. Configuration Mode (`--configure`)
 
@@ -95,7 +95,7 @@ Sets up the encrypted `config.json`. This is idempotent (safe to run multiple ti
   --mgr-user "admin" --mgr-pass "SecretPassword" `
   --group "Production"
 
-# Enable Virtual Machine Support (Hyper-V/VMware)
+# Enable Virtual Machine NIC Support (Hyper-V/VMware)
 .\gozuh.exe --configure --allow-virtual
 
 ```
@@ -111,9 +111,10 @@ Downloads (if needed), installs the MSI, registers the agent, and hardens the co
 .\gozuh.exe --install --name "wazuh-agent-4.14.1.msi"
 
 # Scenario B: Download from URL (Auto-download if missing)
-.\gozuh.exe --install `
-  --name "wazuh-agent-4.14.1.msi" `
-  --installer "[https://packages.wazuh.com/4.x/windows/wazuh-agent-4.14.1-1.msi](https://packages.wazuh.com/4.x/windows/wazuh-agent-4.14.1-1.msi)"
+.\gozuh.exe --install --group default --name wazuh-agent-4.14.1-1.msi `
+  --installer "https://packages.wazuh.com/4.x/windows/wazuh-agent-4.14.1-1.msi" `
+  --mgr-url https://192.168.0.230:55000 --mgr-user wazuh-wui --mgr-pass "MyS3cr37P450r.*-" `
+  --idx-url https://192.168.0.230:9200 --idx-user admin --idx-pass "SecretPassword"
 
 ```
 
