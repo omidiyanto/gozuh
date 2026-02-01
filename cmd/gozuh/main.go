@@ -37,7 +37,7 @@ func main() {
 	stop := flag.Bool("stop", false, "Stop Gozuh & Wazuh Services")
 	restart := flag.Bool("restart", false, "Restart Gozuh & Wazuh Services")
 	help := flag.Bool("help", false, "Show this help guide")
-	
+
 	flag.Usage = func() {
 		printBanner()
 	}
@@ -127,7 +127,7 @@ USAGE:
        gozuh.exe --install --name wazuh-agent-4.14.1.msi
 
   [SCENARIO B] One-Liner Download & Install
-       gozuh.exe --install --installer "https://packages.wazuh.com/4.x/windows/wazuh-agent-4.14.1-1.msi" --name "wazuh-agent-4.14.1-1.msi" --mgr-url https://10.0.0.5 --mgr-user admin --mgr-pass Secret123
+       gozuh.exe --install --group default --name wazuh-agent-4.14.1-1.msi --installer "https://packages.wazuh.com/4.x/windows/wazuh-agent-4.14.1-1.msi" --mgr-url https://192.168.0.230:55000 --mgr-user wazuh-wui --mgr-pass "MyS3cr37P450r.*-" --idx-url https://192.168.0.230:9200 --idx-user admin --idx-pass "SecretPassword"
 
   [SCENARIO C] Enable Virtual Machine Support (Hyper-V / VirtualBox)
        gozuh.exe --configure --allow-virtual

@@ -155,7 +155,7 @@ goversioninfo
 
 3. **Compile:**
 ```bash
-go build -ldflags="-s -w" -o gozuh.exe ./cmd/gozuh
+go build -ldflags="-X 'gozuh/internal/config.EncryptionKey=SUPER_SECRET_KEY_123456789012' -s -w" -o gozuh.exe ./cmd/gozuh
 ```
 
 ---

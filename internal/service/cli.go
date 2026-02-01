@@ -85,7 +85,7 @@ func RunConfigure(opts CLIOptions) {
 	if err := config.SaveConfig(conf); err != nil {
 		log.Fatalf("[ERR] Failed to save config: %v", err)
 	}
-	fmt.Println("[OK] Configuration saved successfully (Encrypted).")
+	fmt.Println("[OK] Configuration saved successfully.")
 }
 
 func RunInstall(opts CLIOptions) {
