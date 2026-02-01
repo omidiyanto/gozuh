@@ -3,7 +3,6 @@ package service
 import (
 	"log"
 	"os"
-	"path/filepath"
 	"time"
 
 	"gozuh/internal/config"
@@ -30,27 +29,27 @@ func (m *GozuhService) Execute(args []string, r <-chan svc.ChangeRequest, change
 }
 
 func (m *GozuhService) RunLoop() {
-	setupLogging()
-	log.Println("[GOZUH] Service Started. Watchdog v1.2 Active.")
+	SetupServiceLogging()
+	log.Println("Gozuh Service Started.")
 
 	for {
 		conf, _ := config.LoadConfig()
-		api := wazuh.NewClient(conf.WazuhURL, conf.IndexerURL, conf.APIUser, conf.APIPass, conf.IndexerUser, conf.IndexerPass)
+		api := wazuh.NewClient(conf.ManagerURL, conf.IndexerURL, conf.ManagerUser, conf.ManagerPass, conf.IndexerUser, conf.IndexerPass)
 		executor := &Executor{API: api, Conf: conf}
 
-		ctx := buildContext(api)
+		ctx := buildContext(api, conf)
 		decision := EvaluateState(ctx)
 		executor.ExecuteDecision(decision, ctx)
 		time.Sleep(time.Duration(conf.SyncInterval) * time.Second)
 	}
 }
 
-func buildContext(api *wazuh.Client) *AgentContext {
+func buildContext(api *wazuh.Client, conf *config.Config) *AgentContext {
 	ctx := &AgentContext{}
-	hw, err := identity.GetIdentity()
+	hw, err := identity.GetIdentity(conf.AllowVirtual)
 	if err != nil {
-		log.Printf("[ERR] Hardware scan failed: %v", err)
-		return ctx 
+		log.Printf("Hardware scan failed: %v", err)
+		return ctx
 	}
 	ctx.Hardware = hw
 	suffix := "0000000000"
@@ -86,7 +85,7 @@ func buildContext(api *wazuh.Client) *AgentContext {
 			}
 		} else {
 			if err.Error() == "not_found" {
-				ctx.ServerReachable = true 
+				ctx.ServerReachable = true
 				ctx.ServerAgent = nil
 			} else {
 				ctx.ServerReachable = false
@@ -99,10 +98,4 @@ func buildContext(api *wazuh.Client) *AgentContext {
 	}
 
 	return ctx
-}
-
-func setupLogging() {
-	os.MkdirAll(filepath.Dir(config.LogFile), 0755)
-	f, _ := os.OpenFile(config.LogFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	log.SetOutput(f)
 }

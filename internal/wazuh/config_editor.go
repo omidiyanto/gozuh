@@ -7,36 +7,36 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"gozuh/internal/config"
 )
 
-const (
-	OssecPath     = "C:\\Program Files (x86)\\ossec-agent"
-	OssecConfPath = OssecPath + "\\ossec.conf"
-	SCARulesPath  = OssecPath + "\\ruleset\\sca"
-	LabelKey      = "hardware_hash"
-)
+const LabelKey = "hardware_hash"
+
+func getSCARulesPath() string {
+	return filepath.Join(config.WazuhDir, "ruleset", "sca")
+}
 
 func GetHardwareLabel() (string, error) {
-	contentBytes, err := os.ReadFile(OssecConfPath)
+	contentBytes, err := os.ReadFile(config.WazuhConf)
 	if err != nil {
 		return "", err
 	}
 	content := string(contentBytes)
 	re := regexp.MustCompile(fmt.Sprintf(`<label key="%s">([^<]+)</label>`, LabelKey))
 	matches := re.FindStringSubmatch(content)
-	
+
 	if len(matches) >= 2 {
 		return matches[1], nil
 	}
-	return "", nil 
+	return "", nil
 }
 
 func DisableCISBenchmarks() error {
 	fmt.Println("[HARDENING] Disabling CIS Benchmark policies...")
 
-	files, err := filepath.Glob(filepath.Join(SCARulesPath, "cis*.y*ml"))
+	files, err := filepath.Glob(filepath.Join(getSCARulesPath(), "cis*.y*ml"))
 	if err != nil {
-		return fmt.Errorf("gagal scan folder SCA: %v", err)
+		return fmt.Errorf("failed to scan SCA folder: %v", err)
 	}
 
 	for _, file := range files {
@@ -47,14 +47,14 @@ func DisableCISBenchmarks() error {
 		newPath := file + ".disabled"
 		fmt.Printf("   -> Renaming %s to .disabled\n", filepath.Base(file))
 		if err := os.Rename(file, newPath); err != nil {
-			fmt.Printf("      [WARN] Gagal rename %s: %v\n", filepath.Base(file), err)
+			fmt.Printf("      [WARN] Failed to rename %s: %v\n", filepath.Base(file), err)
 		}
 	}
 	return nil
 }
 
 func ApplyHardening() error {
-	contentBytes, err := os.ReadFile(OssecConfPath)
+	contentBytes, err := os.ReadFile(config.WazuhConf)
 	if err != nil {
 		return err
 	}
@@ -65,11 +65,11 @@ func ApplyHardening() error {
 		return strings.Replace(m, "<disabled>no</disabled>", "<disabled>yes</disabled>", 1)
 	})
 
-	return os.WriteFile(OssecConfPath, []byte(newContent), 0644)
+	return os.WriteFile(config.WazuhConf, []byte(newContent), 0644)
 }
 
 func UpdateAgentName(newName string) error {
-	contentBytes, err := os.ReadFile(OssecConfPath)
+	contentBytes, err := os.ReadFile(config.WazuhConf)
 	if err != nil {
 		return err
 	}
@@ -84,32 +84,38 @@ func UpdateAgentName(newName string) error {
 	} else {
 		newContent = strings.Replace(content, "<enrollment>", "<enrollment>\n      "+expectedTag, 1)
 	}
-	return os.WriteFile(OssecConfPath, []byte(newContent), 0644)
+	return os.WriteFile(config.WazuhConf, []byte(newContent), 0644)
 }
 
 func EnsureHardwareLabel(hash string) (bool, error) {
-	contentBytes, err := os.ReadFile(OssecConfPath)
+	contentBytes, err := os.ReadFile(config.WazuhConf)
 	if err != nil { return false, err }
 	content := string(contentBytes)
+
 	correctLine := fmt.Sprintf(`<label key="%s">%s</label>`, LabelKey, hash)
+
 	if strings.Contains(content, correctLine) {
 		return false, nil
 	}
 
 	fmt.Println("[CONFIG] Fixing hardware_hash labels...")
+
 	reAnyHash := regexp.MustCompile(fmt.Sprintf(`\s*<label key="%s">.*?</label>`, LabelKey))
 	cleanContent := reAnyHash.ReplaceAllString(content, "")
+
 	var finalContent string
 	if strings.Contains(cleanContent, "</labels>") {
+		// Use regex to find closing tag properly
 		reEndLabels := regexp.MustCompile(`\s*</labels>`)
 		finalContent = reEndLabels.ReplaceAllString(cleanContent, fmt.Sprintf("\n    %s\n  </labels>", correctLine))
 	} else {
+		// Inject new block
 		reEndConfig := regexp.MustCompile(`\s*</ossec_config>`)
 		block := fmt.Sprintf("\n  <labels>\n    %s\n  </labels>\n</ossec_config>", correctLine)
 		finalContent = reEndConfig.ReplaceAllString(cleanContent, block)
 	}
 
-	if err := os.WriteFile(OssecConfPath, []byte(finalContent), 0644); err != nil {
+	if err := os.WriteFile(config.WazuhConf, []byte(finalContent), 0644); err != nil {
 		return false, err
 	}
 	return true, nil

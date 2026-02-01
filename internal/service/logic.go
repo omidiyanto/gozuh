@@ -38,9 +38,8 @@ func EvaluateState(ctx *AgentContext) Decision {
 		}
 	}
 	if ctx.SvcRunning && strings.ToLower(ctx.ServerAgent.Status) == "disconnected" {
-		lastKeepAlive := ctx.ServerAgent.LastKeepAlive
-		if lastKeepAlive == "" || isOutdated(lastKeepAlive, 24*time.Hour) {
-			log.Println("[DIAGNOSE] Case G: Zombie Agent. Service running but disconnected > 24h.")
+		if isOutdated(ctx.ServerAgent.LastKeepAlive, 24*time.Hour) {
+			log.Println("[DIAGNOSE] Case G: Zombie Agent.")
 			return ActionRestartSvc
 		}
 	}

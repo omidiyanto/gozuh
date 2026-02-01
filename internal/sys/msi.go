@@ -8,34 +8,31 @@ import (
 	"syscall"
 )
 
-const MSIFileName = "wazuh-agent-4.14.1-1.msi"
-
-func InstallWazuhMSI(managerIP, agentName string) error {
-	exePath, _ := os.Executable()
-	workingDir := filepath.Dir(exePath)
-	msiPath := filepath.Join(workingDir, MSIFileName)
-
-	if _, err := os.Stat(msiPath); os.IsNotExist(err) {
-		return fmt.Errorf("file %s tidak ditemukan", MSIFileName)
+func InstallWazuhMSI(installerPath, managerIP, agentName, groupName string) error {
+	if _, err := os.Stat(installerPath); os.IsNotExist(err) {
+		return fmt.Errorf("installer file not found at: %s", installerPath)
 	}
-
-	fmt.Printf("[MSI] Installing %s...\n", MSIFileName)
+	fmt.Printf("[MSI] Installing %s...\n", filepath.Base(installerPath))
 	fmt.Printf("      Manager : %s\n", managerIP)
 	fmt.Printf("      Name    : %s\n", agentName)
-
-	cmd := exec.Command("msiexec", "/i", msiPath, "/qn",
+	fmt.Printf("      Group   : %s\n", groupName)
+	args := []string{
+		"/i", installerPath, "/qn",
 		fmt.Sprintf("WAZUH_MANAGER=%s", managerIP),
-		"WAZUH_AGENT_GROUP=default",
 		fmt.Sprintf("WAZUH_AGENT_NAME=%s", agentName),
 		"/norestart",
-	)
-
+	}
+	if groupName != "" {
+		args = append(args, fmt.Sprintf("WAZUH_AGENT_GROUP=%s", groupName))
+	} else {
+		args = append(args, "WAZUH_AGENT_GROUP=default")
+	}
+	cmd := exec.Command("msiexec", args...)
 	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
 
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("msiexec failed: %v. Output: %s", err, string(output))
 	}
-
 	return nil
 }

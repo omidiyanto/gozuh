@@ -80,7 +80,7 @@ graph TD
 Place the following in your deployment folder (e.g., for PDQ Deploy or Ansible):
 
 * `gozuh.exe` (The compiled binary)
-* `wazuh-agent-4.14.1-1.msi` (Original installer)
+* `wazuh-agent-installer.msi` (Original installer)
 * `config.json` (Your server settings)
 
 ### 2. Commands
