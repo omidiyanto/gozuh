@@ -8,7 +8,7 @@ import (
 
 	"golang.org/x/sys/windows/svc"
 )
-
+const AppVersion = "1.4.0.0"
 func main() {
 	isService, _ := svc.IsWindowsService()
 	if isService {
@@ -16,6 +16,7 @@ func main() {
 		return
 	}
 	opts := service.CLIOptions{}
+	showVersion := flag.Bool("version", false, "Print Gozuh version")
 	flag.BoolVar(&opts.ActionConfigure, "configure", false, "Mode: Setup config.json only (Encryption Enabled)")
 	flag.BoolVar(&opts.ActionInstall, "install", false, "Mode: Install, Register & Harden Agent")
 	flag.StringVar(&opts.InstallerName, "name", "", "[REQUIRED for Install] Filename of the MSI (e.g. wazuh-agent.msi)")
@@ -42,12 +43,36 @@ func main() {
 		printBanner()
 	}
 	flag.Parse()
-	if *help { printBanner(); return }
-	if *debug { service.RunDebug(); return }
-	if *purge { service.RunPurge(); return }
-	if *uninstall { service.RunUninstall(); return }
-	if *stop { service.RunServiceControl("stop"); return }
-	if *restart { service.RunServiceControl("restart"); return }
+
+	if *showVersion {
+		fmt.Printf("Gozuh v%s\n", AppVersion)
+		return
+	}
+
+	if *help {
+		printBanner()
+		return
+	}
+	if *debug {
+		service.RunDebug()
+		return
+	}
+	if *purge {
+		service.RunPurge()
+		return
+	}
+	if *uninstall {
+		service.RunUninstall()
+		return
+	}
+	if *stop {
+		service.RunServiceControl("stop")
+		return
+	}
+	if *restart {
+		service.RunServiceControl("restart")
+		return
+	}
 
 	if opts.ActionConfigure {
 		service.RunConfigure(opts)
@@ -72,9 +97,9 @@ func runService() {
 }
 
 func printBanner() {
-	fmt.Println(`
+	fmt.Printf(`
 ==============================================================================
-   GOZUH - Enterprise Wazuh Agent Companion
+   GOZUH - Wazuh Agent Companion (v%s)
 ==============================================================================
 
 USAGE:
@@ -83,7 +108,7 @@ USAGE:
 ------------------------------------------------------------------------------
  1. CONFIGURATION MODE (--configure)
     Creates an encrypted 'config.json'. Safe to run repeatedly (Idempotent).
-    
+
     REQUIRED FLAGS:
       --mgr-url   : Wazuh Manager URL (e.g. https://192.168.0.10)
       --mgr-user  : API Username
@@ -109,6 +134,7 @@ USAGE:
 
 ------------------------------------------------------------------------------
  3. UTILITY COMMANDS
+    --version     : Show Gozuh version
     --debug       : Show Hardware Identity (UUID, Serial, MAC Hash) & API Status
     --stop        : Stop Gozuh & Wazuh services safely
     --restart     : Restart services (Triggers Watchdog)
@@ -133,5 +159,6 @@ USAGE:
        gozuh.exe --configure --allow-virtual
        gozuh.exe --debug
 
-==============================================================================`)
+==============================================================================`, AppVersion)
+	fmt.Println()
 }

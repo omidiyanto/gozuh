@@ -2,8 +2,10 @@ package service
 
 import (
 	"log"
+	"sort"
 	"strings"
 	"time"
+	"gozuh/internal/wazuh"
 )
 
 func EvaluateState(ctx *AgentContext) Decision {
@@ -37,22 +39,44 @@ func EvaluateState(ctx *AgentContext) Decision {
 			return ActionRename
 		}
 	}
-	groupMatch := false
-	if len(ctx.ServerAgent.Group) > 0 {
-		for _, g := range ctx.ServerAgent.Group {
-			if strings.EqualFold(g, ctx.TargetGroup) {
-				groupMatch = true
-				break
-			}
+	serverGroups := ctx.ServerAgent.Group
+	sort.Strings(serverGroups)
+	serverGroupStr := strings.Join(serverGroups, ",")
+	if serverGroupStr == "" { serverGroupStr = "default" }
+	localGroupsRaw := strings.Split(ctx.LocalConfigGroup, ",")
+	var localGroupsClean []string
+	for _, g := range localGroupsRaw {
+		if t := strings.TrimSpace(g); t != "" {
+			localGroupsClean = append(localGroupsClean, t)
 		}
-	} else if ctx.TargetGroup == "default" {
-		groupMatch = true
+	}
+	if len(localGroupsClean) == 0 { localGroupsClean = []string{"default"} }
+	sort.Strings(localGroupsClean)
+	localGroupStr := strings.Join(localGroupsClean, ",")
+	ossecRaw, _ := wazuh.GetConfiguredGroup()
+	ossecGroupsRaw := strings.Split(ossecRaw, ",")
+	var ossecGroupsClean []string
+	for _, g := range ossecGroupsRaw {
+		if t := strings.TrimSpace(g); t != "" {
+			ossecGroupsClean = append(ossecGroupsClean, t)
+		}
+	}
+	if len(ossecGroupsClean) == 0 { ossecGroupsClean = []string{"default"} }
+	sort.Strings(ossecGroupsClean)
+	ossecGroupStr := strings.Join(ossecGroupsClean, ",")
+	configMismatch := !strings.EqualFold(serverGroupStr, localGroupStr)
+	ossecMismatch := !strings.EqualFold(serverGroupStr, ossecGroupStr)
+
+	if configMismatch || ossecMismatch {
+		if configMismatch {
+			log.Printf("[DIAGNOSE] Config Drift Detected (JSON). Server: [%s] vs Local: [%s].", serverGroupStr, localGroupStr)
+		}
+		if ossecMismatch {
+			log.Printf("[DIAGNOSE] Config Tampering Detected (XML). Server: [%s] vs Ossec: [%s].", serverGroupStr, ossecGroupStr)
+		}
+		return ActionSyncLocal
 	}
 
-	if !groupMatch {
-		log.Printf("[DIAGNOSE] Case H: Group Mismatch. Target: %s vs Server: %v", ctx.TargetGroup, ctx.ServerAgent.Group)
-		return ActionGroupMismatch
-	}
 	if ctx.SvcRunning && strings.ToLower(ctx.ServerAgent.Status) == "disconnected" {
 		if isOutdated(ctx.ServerAgent.LastKeepAlive, 24*time.Hour) {
 			log.Println("[DIAGNOSE] Case G: Zombie Agent.")

@@ -16,14 +16,16 @@ const (
 	ActionRename        Decision = "RENAME"
 	ActionRecovery      Decision = "RECOVERY"
 	ActionRestartSvc    Decision = "RESTART_SVC"
-	ActionGroupMismatch Decision = "GROUP_MISMATCH" 
+	ActionSyncLocal     Decision = "SYNC_LOCAL"
 )
 
 type AgentContext struct {
 	Hardware   *identity.HardwareInfo
 	TargetName string
 	TargetHash string
-	TargetGroup string 
+
+	TargetGroup      string
+	LocalConfigGroup string
 
 	LocalID    string
 	LocalName  string

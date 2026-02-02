@@ -23,7 +23,7 @@ type CLIOptions struct {
 	ActionInstall   bool
 
 	InstallerSource string
-	InstallerName   string 
+	InstallerName   string
 
 	MgrURL  string
 	MgrUser string
@@ -48,10 +48,13 @@ func getManagerHost(fullURL string) string {
 }
 
 func RunConfigure(opts CLIOptions) {
-	DisableFileLogging() 
+	DisableFileLogging()
 	fmt.Println(">>> GOZUH CONFIGURATION SETUP <<<")
 
-	conf, _ := config.LoadConfig()
+	conf, err := config.LoadConfig()
+	if err != nil {
+		fmt.Printf("[WARN] Could not load existing config: %v\n", err)
+	}
 
 	if opts.MgrURL != "" { conf.ManagerURL = opts.MgrURL }
 	if opts.MgrUser != "" { conf.ManagerUser = opts.MgrUser }
@@ -61,15 +64,15 @@ func RunConfigure(opts CLIOptions) {
 	if opts.IdxPass != "" { conf.IndexerPass = opts.IdxPass }
 	if opts.Group != "" { conf.AgentGroup = opts.Group }
 	if opts.InstallerName != "" { conf.InstallerName = opts.InstallerName }
-	
+
 	if opts.EnableCIS { conf.DisableCIS = false }
-	
-	if opts.AllowVirtual { 
-		conf.AllowVirtual = true 
+
+	if opts.AllowVirtual {
+		conf.AllowVirtual = true
 		fmt.Println("[CONFIG] Virtual NICs: ALLOWED")
 	}
-	if opts.DenyVirtual { 
-		conf.AllowVirtual = false 
+	if opts.DenyVirtual {
+		conf.AllowVirtual = false
 		fmt.Println("[CONFIG] Virtual NICs: DENIED (Physical Only)")
 	}
 
@@ -82,14 +85,60 @@ func RunConfigure(opts CLIOptions) {
 		log.Fatal("[ERR] --mgr-url, --mgr-user, and --mgr-pass are required.")
 	}
 
+	if opts.Group != "" && conf.ManagerURL != "" {
+		fmt.Println("[INFO] Attempting to push group update to Server...")
+		api := wazuh.NewClient(conf.ManagerURL, conf.IndexerURL, conf.ManagerUser, conf.ManagerPass, conf.IndexerUser, conf.IndexerPass)
+		hw, _ := identity.GetIdentity(conf.AllowVirtual)
+		
+		suffix := hw.Hash
+		if len(hw.Hash) > 10 { suffix = hw.Hash[len(hw.Hash)-10:] }
+		
+		candidates, err := api.GetAgentCandidates(suffix)
+		if err == nil {
+			found := false
+			for _, c := range candidates {
+				match := false
+				labels, err := api.GetAgentLabels(c.ID)
+				if err == nil && strings.EqualFold(labels["hardware_hash"], hw.Hash) {
+					match = true
+				} else {
+					verified, _ := api.VerifyHashInIndexer(c.ID, hw.Hash)
+					if verified { match = true }
+				}
+
+				if match {
+					fmt.Printf("   -> Found Agent ID: %s. Updating group to '%s'...\n", c.ID, opts.Group)
+					err := api.AssignGroups(c.ID, opts.Group)
+					if err != nil {
+						fmt.Printf("   [WARN] Failed to update server: %v. Saved locally, Watchdog will retry later.\n", err)
+					} else {
+						fmt.Println("   [SUCCESS] Server updated.")
+						found = true
+					}
+					break
+				}
+			}
+			if !found {
+				fmt.Println("   [INFO] Agent not found on server yet. Config saved for future registration.")
+			}
+		} else {
+			fmt.Printf("   [WARN] Could not connect to API: %v. Saving locally only.\n", err)
+		}
+	}
+
 	if err := config.SaveConfig(conf); err != nil {
 		log.Fatalf("[ERR] Failed to save config: %v", err)
 	}
+	
+	if opts.Group != "" {
+		wazuh.UpdateAgentGroup(opts.Group)
+	}
+
 	fmt.Println("[OK] Configuration saved successfully.")
 }
 
 func RunInstall(opts CLIOptions) {
-	DisableFileLogging() 
+	DisableFileLogging()
 	fmt.Println(">>> STARTING INSTALLATION SEQUENCE <<<")
 
 	conf, _ := config.LoadConfig()
@@ -174,11 +223,14 @@ func runBootstrap(conf *config.Config, installerPath string) {
 	targetName := fmt.Sprintf("%s-%s", strings.ToLower(rawHost), suffix)
 
 	var recoveryKey, recoveryID string
+	
 	fmt.Println("[STEP 1] Checking identity on server...")
 	candidates, _ := api.GetAgentCandidates(suffix)
+	
 	for _, c := range candidates {
 		match := false
 		labels, err := api.GetAgentLabels(c.ID)
+		
 		if err == nil && strings.EqualFold(labels["hardware_hash"], hw.Hash) {
 			match = true
 		} else {
@@ -187,27 +239,44 @@ func runBootstrap(conf *config.Config, installerPath string) {
 		}
 
 		if match {
-			groupMatch := false
-			for _, g := range c.Group {
-				if strings.EqualFold(g, conf.AgentGroup) { groupMatch = true; break }
-			}
-			if conf.AgentGroup == "default" && len(c.Group) == 0 { groupMatch = true }
+			fmt.Printf("   -> Found existing Agent ID: %s (Name: %s)\n", c.ID, c.Name)
 
-			if c.Name != targetName || !groupMatch {
-				fmt.Printf("   -> MISMATCH Detected (Name or Group). Deleting ID: %s\n", c.ID)
-				api.DeleteAgent(c.ID)
+			key, err := api.GetAgentKey(c.ID)
+			if err == nil {
+				recoveryKey, recoveryID = key, c.ID
 			} else {
-				key, err := api.GetAgentKey(c.ID)
-				if err == nil {
-					recoveryKey, recoveryID = key, c.ID
+				fmt.Printf("      [ERR] Failed to get key for ID %s. Agent might be broken.\n", c.ID)
+				continue
+			}
+
+			serverGroupsMap := make(map[string]bool)
+			for _, g := range c.Group { serverGroupsMap[strings.ToLower(g)] = true }
+			
+			targetGroupsList := strings.Split(conf.AgentGroup, ",")
+			needsUpdate := false
+
+			for _, reqG := range targetGroupsList {
+				reqG = strings.TrimSpace(reqG)
+				if reqG == "" { continue }
+				if !serverGroupsMap[strings.ToLower(reqG)] {
+					needsUpdate = true
+					break
 				}
 			}
-			break
+			
+			if needsUpdate {
+				fmt.Printf("   -> Group Mismatch via CLI. Updating Server ID %s to group '%s'...\n", c.ID, conf.AgentGroup)
+				if err := api.AssignGroups(c.ID, conf.AgentGroup); err != nil {
+					fmt.Printf("      [WARN] Failed to update group on server: %v. Proceeding with local config injection.\n", err)
+				} else {
+					fmt.Println("      [OK] Server Group Updated.")
+				}
+			}
+			break 
 		}
 	}
 
 	fmt.Println("[STEP 2] Checking Wazuh Agent MSI...")
-	
 	mgrIP := getManagerHost(conf.ManagerURL)
 
 	if sys.GetServiceStatus(config.WazuhService) == "NOT_INSTALLED" {
@@ -229,13 +298,14 @@ func runBootstrap(conf *config.Config, installerPath string) {
 	wazuh.EnsureHardwareLabel(hw.Hash)
 	wazuh.ApplyHardening()
 	wazuh.UpdateAgentName(targetName)
+	wazuh.UpdateAgentGroup(conf.AgentGroup)
 
 	fmt.Println("[STEP 4] Managing Keys...")
 	if recoveryKey != "" {
-		fmt.Println("   -> Restoring identity from server.")
+		fmt.Printf("   -> Restoring identity from server (ID: %s).\n", recoveryID)
 		raw, _ := base64.StdEncoding.DecodeString(recoveryKey)
 		os.WriteFile(config.WazuhClientKey, raw, 0644)
-	} else if recoveryID == "" {
+	} else {
 		fmt.Println("   -> Clean install (New Identity).")
 		os.Remove(config.WazuhClientKey)
 	}

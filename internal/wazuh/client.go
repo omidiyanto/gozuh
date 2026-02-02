@@ -15,6 +15,21 @@ import (
 	"gozuh/internal/config"
 )
 
+// WazuhErrorResponse is used to parse specific API error codes
+type WazuhErrorResponse struct {
+	Error   int    `json:"error"`
+	Message string `json:"message"`
+	Data    struct {
+		FailedItems []struct {
+			Error struct {
+				Code    int    `json:"code"`
+				Message string `json:"message"`
+			} `json:"error"`
+			ID []string `json:"id"`
+		} `json:"failed_items"`
+	} `json:"data"`
+}
+
 type Client struct {
 	BaseURL     string
 	IndexerURL  string
@@ -60,6 +75,25 @@ func GetLocalAuth() (id string, name string, err error) {
 	return "", "", fmt.Errorf("empty keys")
 }
 
+func (c *Client) Authenticate() error {
+	apiURL := fmt.Sprintf("%s/security/user/authenticate?raw=true", c.BaseURL)
+	req, _ := http.NewRequest("POST", apiURL, nil)
+	req.Header.Add("Authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte(c.User+":"+c.Pass)))
+
+	resp, err := c.HTTPClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != 200 {
+		return fmt.Errorf("auth failed: %d", resp.StatusCode)
+	}
+	c.Token = strings.TrimSpace(string(body))
+	return nil
+}
+
 func (c *Client) GetAgentInfo(agentID string) (*AgentInfo, error) {
 	if c.Token == "" { c.Authenticate() }
 	apiURL := fmt.Sprintf("%s/agents?agents_list=%s&select=status,id,name,group,lastKeepAlive", c.BaseURL, agentID)
@@ -90,25 +124,6 @@ func (c *Client) GetAgentInfo(agentID string) (*AgentInfo, error) {
 	}
 
 	return &res.Data.AffectedItems[0], nil
-}
-
-func (c *Client) Authenticate() error {
-	apiURL := fmt.Sprintf("%s/security/user/authenticate?raw=true", c.BaseURL)
-	req, _ := http.NewRequest("POST", apiURL, nil)
-	req.Header.Add("Authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte(c.User+":"+c.Pass)))
-
-	resp, err := c.HTTPClient.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	body, _ := io.ReadAll(resp.Body)
-	if resp.StatusCode != 200 {
-		return fmt.Errorf("auth failed: %d", resp.StatusCode)
-	}
-	c.Token = strings.TrimSpace(string(body))
-	return nil
 }
 
 func (c *Client) VerifyHashInIndexer(agentID, targetHash string) (bool, error) {
@@ -174,7 +189,7 @@ func (c *Client) GetAgentCandidates(searchQuery string) ([]AgentInfo, error) {
 		baseURL, _ := url.Parse(c.BaseURL + "/agents")
 		params := url.Values{}
 		params.Add("search", searchQuery)
-		params.Add("select", "id,name,group") 
+		params.Add("select", "id,name,group")
 		params.Add("limit", "50")
 		baseURL.RawQuery = params.Encode()
 
@@ -284,11 +299,9 @@ func (c *Client) DeleteAgent(agentID string) (string, error) {
 
 		baseURL, _ := url.Parse(c.BaseURL + "/agents")
 		params := url.Values{}
-
 		params.Add("agents_list", agentID)
 		params.Add("status", "all")
 		params.Add("older_than", "0s")
-
 		baseURL.RawQuery = params.Encode()
 
 		req, _ := http.NewRequest("DELETE", baseURL.String(), nil)
@@ -316,4 +329,84 @@ func (c *Client) DeleteAgent(agentID string) (string, error) {
 		return body, fmt.Errorf("api error %d", code)
 	}
 	return body, nil
+}
+
+func (c *Client) AssignGroups(agentID string, groups string) error {
+	if c.Token == "" {
+		if err := c.Authenticate(); err != nil {
+			return err
+		}
+	}
+	currentAgent, err := c.GetAgentInfo(agentID)
+	if err != nil {
+		return fmt.Errorf("failed to fetch current status: %v", err)
+	}
+	rawList := strings.Split(groups, ",")
+	targetMap := make(map[string]bool)
+	var targetGroups []string
+
+	for _, g := range rawList {
+		if t := strings.TrimSpace(g); t != "" {
+			targetGroups = append(targetGroups, t)
+			targetMap[strings.ToLower(t)] = true
+		}
+	}
+	if len(targetGroups) == 0 {
+		targetGroups = append(targetGroups, "default")
+		targetMap["default"] = true
+	}
+	for _, currGroup := range currentAgent.Group {
+		if !targetMap[strings.ToLower(currGroup)] {
+			err := c.modifyGroup(agentID, currGroup, "DELETE")
+			if err != nil {
+				fmt.Printf("      [WARN] Failed to remove old group '%s': %v\n", currGroup, err)
+			} else {
+				fmt.Printf("      [-] Removed from group: %s\n", currGroup)
+			}
+		}
+	}
+	for _, groupID := range targetGroups {
+		err := c.modifyGroup(agentID, groupID, "PUT")
+		if err != nil {
+			return fmt.Errorf("failed to add group %s: %v", groupID, err)
+		}
+	}
+	return nil
+}
+
+func (c *Client) modifyGroup(agentID, groupID, method string) error {
+	apiURL := fmt.Sprintf("%s/agents/%s/group/%s", c.BaseURL, agentID, groupID)
+	req, _ := http.NewRequest(method, apiURL, nil)
+	req.Header.Add("Authorization", "Bearer "+c.Token)
+
+	resp, err := c.HTTPClient.Do(req)
+	if err != nil { return err }
+	defer resp.Body.Close()
+
+	if resp.StatusCode == 401 {
+		c.Authenticate()
+		req.Header.Set("Authorization", "Bearer "+c.Token)
+		resp, _ = c.HTTPClient.Do(req)
+	}
+
+	bodyBytes, _ := io.ReadAll(resp.Body)
+	var wazuhResp WazuhErrorResponse
+	json.Unmarshal(bodyBytes, &wazuhResp)
+
+	if wazuhResp.Error != 0 {
+		if method == "PUT" {
+			for _, item := range wazuhResp.Data.FailedItems {
+				if item.Error.Code == 1751 {
+					return nil 
+				}
+			}
+		}
+		return fmt.Errorf("api error: %s", wazuhResp.Message)
+	}
+
+	if resp.StatusCode != 200 {
+		return fmt.Errorf("http status %d: %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	return nil
 }

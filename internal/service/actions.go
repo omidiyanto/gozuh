@@ -7,6 +7,7 @@ import (
 	"gozuh/internal/wazuh"
 	"log"
 	"os"
+	"strings"
 )
 
 type Executor struct {
@@ -42,13 +43,29 @@ func (e *Executor) ExecuteDecision(d Decision, ctx *AgentContext) {
 		os.Remove(config.WazuhClientKey)
 		e.performRecovery(ctx)
 
-	case ActionRename, ActionSelfHeal, ActionGroupMismatch:
+	case ActionRename, ActionSelfHeal:
 		log.Printf("[ACTION] Executing %s sequence...", d)
 		if ctx.LocalID != "" {
 			e.API.DeleteAgent(ctx.LocalID)
 		}
 		os.Remove(config.WazuhClientKey)
 		e.performRecovery(ctx)
+
+	case ActionSyncLocal:
+		log.Println("[ACTION] Config Drift Detected. Synchronizing Local Configuration with Server State...")
+		serverGroups := strings.Join(ctx.ServerAgent.Group, ",")
+		if serverGroups == "" { serverGroups = "default" }
+		currentConf, _ := config.LoadConfig()
+		log.Printf("[SYNC] Correcting agent_group. Old: [%s] -> New: [%s]", currentConf.AgentGroup, serverGroups)
+		currentConf.AgentGroup = serverGroups
+		if err := config.SaveConfig(currentConf); err != nil {
+			log.Printf("[ERR] Failed to update config.json: %v", err)
+		}
+		if err := wazuh.UpdateAgentGroup(serverGroups); err != nil {
+			log.Printf("[ERR] Failed to update ossec.conf: %v", err)
+		}
+		sys.RestartWazuhAgent()
+		log.Println("[SUCCESS] Synchronization Complete (Service Restarted).")
 
 	case ActionRecovery:
 		log.Println("[ACTION] Performing Fresh/Recovery Installation...")
@@ -68,25 +85,16 @@ func (e *Executor) performRecovery(ctx *AgentContext) {
 			verified, _ := e.API.VerifyHashInIndexer(c.ID, ctx.Hardware.Hash)
 			if verified {
 				log.Printf("[RECOVERY] Found history match: %s (ID: %s)", c.Name, c.ID)
-				groupMatch := false
-				if len(c.Group) == 0 && (ctx.TargetGroup == "default" || ctx.TargetGroup == "") {
-					groupMatch = true
-				} else {
-					for _, g := range c.Group {
-						if g == ctx.TargetGroup { groupMatch = true; break }
-					}
-				}
-
-				if c.Name != ctx.TargetName || !groupMatch {
-					log.Printf("[RECOVERY] Mismatch detected (Name or Group). Deleting old record %s...", c.ID)
+				if c.Name != ctx.TargetName {
+					log.Printf("[RECOVERY] Name Mismatch. Deleting old record %s...", c.ID)
 					e.API.DeleteAgent(c.ID)
-					continue 
+					continue
 				} else {
 					key, kErr := e.API.GetAgentKey(c.ID)
 					if kErr == nil {
 						recoveryID, recoveryKey = c.ID, key
 					}
-					break 
+					break
 				}
 			}
 		}
@@ -98,8 +106,7 @@ func (e *Executor) performRecovery(ctx *AgentContext) {
 		log.Println("[SUCCESS] Identity Restored.")
 	} else {
 		log.Println("[FRESH] No valid history found. Registering new agent...")
-		wazuh.UpdateAgentGroup(ctx.TargetGroup) 
-		
+		wazuh.UpdateAgentGroup(ctx.TargetGroup)
 		wazuh.UpdateAgentName(ctx.TargetName)
 	}
 

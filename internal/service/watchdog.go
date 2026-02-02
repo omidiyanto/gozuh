@@ -34,10 +34,10 @@ func (m *GozuhService) RunLoop() {
 
 	for {
 		fInfo, err := os.Stat(config.ServiceLogFile)
-        if err == nil && fInfo.Size() > 100*1024*1024 {
-             log.Println("[MAINTENANCE] Log file too large. Rotating...")
-             SetupServiceLogging() 
-        }
+		if err == nil && fInfo.Size() > 10*1024*1024 {
+			log.Println("[MAINTENANCE] Log file too large. Rotating...")
+			SetupServiceLogging()
+		}
 		conf, _ := config.LoadConfig()
 		api := wazuh.NewClient(conf.ManagerURL, conf.IndexerURL, conf.ManagerUser, conf.ManagerPass, conf.IndexerUser, conf.IndexerPass)
 		executor := &Executor{API: api, Conf: conf}
@@ -62,7 +62,8 @@ func buildContext(api *wazuh.Client, conf *config.Config) *AgentContext {
 	host, _ := os.Hostname()
 	ctx.TargetName = host + "-" + suffix
 	ctx.TargetHash = suffix
-	ctx.TargetGroup = conf.AgentGroup 
+	ctx.TargetGroup = conf.AgentGroup
+	ctx.LocalConfigGroup = conf.AgentGroup
 
 	ctx.SvcRunning, _ = sys.IsServiceRunning()
 	id, name, err := wazuh.GetLocalAuth()
