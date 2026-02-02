@@ -74,7 +74,7 @@ func UpdateAgentName(newName string) error {
 	content := string(contentBytes)
 
 	expectedTag := fmt.Sprintf("<agent_name>%s</agent_name>", newName)
-	
+
 	reEnrollment := regexp.MustCompile(`(?s)<enrollment>.*?</enrollment>`)
 	enrollmentBlock := reEnrollment.FindString(content)
 
@@ -100,22 +100,40 @@ func UpdateAgentName(newName string) error {
 	return os.WriteFile(config.WazuhConf, []byte(newContent), 0644)
 }
 
+func GetConfiguredGroup() (string, error) {
+	contentBytes, err := os.ReadFile(config.WazuhConf)
+	if err != nil {
+		return "", err
+	}
+	content := string(contentBytes)
+
+	reEnrollment := regexp.MustCompile(`(?s)<enrollment>.*?</enrollment>`)
+	enrollmentBlock := reEnrollment.FindString(content)
+
+	if enrollmentBlock != "" {
+		reGroup := regexp.MustCompile(`<groups>([^<]+)</groups>`)
+		matches := reGroup.FindStringSubmatch(enrollmentBlock)
+		if len(matches) >= 2 {
+			return strings.TrimSpace(matches[1]), nil
+		}
+	}
+	return "default", nil
+}
+
 func UpdateAgentGroup(newGroup string) error {
 	if newGroup == "" { newGroup = "default" }
-	
 	contentBytes, err := os.ReadFile(config.WazuhConf)
 	if err != nil { return err }
 	content := string(contentBytes)
 	reEnrollment := regexp.MustCompile(`(?s)<enrollment>.*?</enrollment>`)
 	enrollmentBlock := reEnrollment.FindString(content)
-	
+
 	var newContent string
 	expectedTag := fmt.Sprintf("<groups>%s</groups>", newGroup)
 
 	if enrollmentBlock != "" {
 		reGroup := regexp.MustCompile(`<groups>.*?</groups>`)
 		var newEnrollmentBlock string
-		
 		if reGroup.MatchString(enrollmentBlock) {
 			newEnrollmentBlock = reGroup.ReplaceAllString(enrollmentBlock, expectedTag)
 		} else {
@@ -128,8 +146,7 @@ func UpdateAgentGroup(newGroup string) error {
 			return strings.Replace(m, "</client>", fmt.Sprintf("  <enrollment>\n      %s\n    </enrollment>\n  </client>", expectedTag), 1)
 		})
 	}
-	
-	fmt.Printf("[CONFIG] Updating Agent Group to: %s\n", newGroup)
+
 	return os.WriteFile(config.WazuhConf, []byte(newContent), 0644)
 }
 
