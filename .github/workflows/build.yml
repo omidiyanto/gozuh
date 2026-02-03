@@ -50,7 +50,7 @@ jobs:
           CGO_ENABLED: 0
         run: |
           cd cmd/gozuh
-          LDFLAGS="-X 'gozuh/internal/config.EncryptionKey=${{ env.GENERATED_KEY }}'"
+          LDFLAGS="-s -w -X 'gozuh/internal/config.EncryptionKey=${{ env.GENERATED_KEY }}'"
           
           GOARCH=amd64 goversioninfo -icon=../../docs/images/icon.ico -manifest=manifest.xml
           GOARCH=amd64 go build -ldflags="$LDFLAGS" -o ../../gozuh-x64.exe .
