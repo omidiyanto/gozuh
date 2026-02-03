@@ -54,10 +54,16 @@ func (e *Executor) ExecuteDecision(d Decision, ctx *AgentContext) {
 	case ActionSyncLocal:
 		log.Println("[ACTION] Config Drift Detected. Synchronizing Local Configuration with Server State...")
 		serverGroups := strings.Join(ctx.ServerAgent.Group, ",")
-		if serverGroups == "" { serverGroups = "default" }
+		if serverGroups == "" {
+			serverGroups = "default"
+		}
 		currentConf, _ := config.LoadConfig()
 		log.Printf("[SYNC] Correcting agent_group. Old: [%s] -> New: [%s]", currentConf.AgentGroup, serverGroups)
 		currentConf.AgentGroup = serverGroups
+		if err := wazuh.SetRemoteCommands(currentConf.RemoteCommand); err != nil {
+			log.Printf("[ERR] Failed to enforce local_internal_options: %v", err)
+		}
+
 		if err := config.SaveConfig(currentConf); err != nil {
 			log.Printf("[ERR] Failed to update config.json: %v", err)
 		}
@@ -80,7 +86,9 @@ func (e *Executor) performRecovery(ctx *AgentContext) {
 
 	if err == nil {
 		for _, c := range candidates {
-			if c.Name == ctx.TargetName && ctx.LocalID != "" { continue }
+			if c.Name == ctx.TargetName && ctx.LocalID != "" {
+				continue
+			}
 
 			verified, _ := e.API.VerifyHashInIndexer(c.ID, ctx.Hardware.Hash)
 			if verified {
@@ -111,6 +119,8 @@ func (e *Executor) performRecovery(ctx *AgentContext) {
 	}
 
 	wazuh.EnsureHardwareLabel(ctx.Hardware.Hash)
+	currentConf, _ := config.LoadConfig()
+	wazuh.SetRemoteCommands(currentConf.RemoteCommand)
 	sys.RestartWazuhAgent()
 	config.SaveState(&config.State{HardwareHash: ctx.Hardware.Hash, Hostname: ctx.TargetName})
 }

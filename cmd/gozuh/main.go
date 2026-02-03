@@ -8,7 +8,7 @@ import (
 
 	"golang.org/x/sys/windows/svc"
 )
-const AppVersion = "1.4.0.0"
+const AppVersion = "1.4.1.0"
 func main() {
 	isService, _ := svc.IsWindowsService()
 	if isService {
@@ -31,6 +31,8 @@ func main() {
 	flag.BoolVar(&opts.EnableCIS, "enable-cis", false, "[OPTIONAL] Enable CIS Benchmarks (Default: Disabled)")
 	flag.BoolVar(&opts.AllowVirtual, "allow-virtual", false, "Toggle: Enable Virtual NIC Support (for VMs)")
 	flag.BoolVar(&opts.DenyVirtual, "deny-virtual", false, "Toggle: Disable Virtual NIC Support (Physical Only)")
+	flag.BoolVar(&opts.EnableRemote, "enable-remote-command", false, "Set remote_commands=1 (Default: true if not specified)")
+	flag.BoolVar(&opts.DisableRemote, "disable-remote-command", false, "Set remote_commands=0")
 
 	debug := flag.Bool("debug", false, "Run Diagnostics & Identity Check")
 	purge := flag.Bool("purge", false, "Full Decommission (Remove from Server & Local)")
@@ -118,6 +120,8 @@ USAGE:
       --group     : Agent Group (Default: default)
       --idx-url   : Indexer URL (if different from Manager)
       --allow-virtual : Enable support for Virtual Machines (Hyper-V/VMware)
+      --disable-remote-command : Block server from executing remote commands.
+	  --enable-remote-command : Allow server to execute remote commands (Default).
 
 ------------------------------------------------------------------------------
  2. INSTALLATION MODE (--install)
