@@ -79,6 +79,7 @@ func getRobustMAC(allowVirtual bool) ([]string, string) {
 		if strings.Contains(desc, "VPN") { continue }
 		if strings.Contains(desc, "LOOPBACK") { continue }
 		if strings.Contains(desc, "WI-FI DIRECT") { continue }
+		if strings.Contains(desc, "BLUETOOTH") { continue }
 		if !allowVirtual {
 			if !adapter.PhysicalAdapter {
 				continue

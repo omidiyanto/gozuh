@@ -8,13 +8,14 @@ import (
 )
 
 var (
-	AppDir         string
-	WazuhDir       string
-	ConfigFile     string
-	StateFile      string
-	ServiceLogFile string 
-	WazuhClientKey string
-	WazuhConf      string
+	AppDir             string 
+	WazuhDir           string 
+	ConfigFile         string 
+	StateFile          string 
+	ServiceLogFile     string
+	WazuhClientKey     string
+	WazuhConf          string
+	WazuhLocalInternal string
 )
 
 const (
@@ -34,6 +35,7 @@ type Config struct {
 	DisableCIS    bool   `json:"disable_cis"`
 	AllowVirtual  bool   `json:"allow_virtual"`
 	SyncInterval  int    `json:"sync_interval"`
+	RemoteCommand bool   `json:"remote_command"`
 }
 
 type State struct {
@@ -51,6 +53,7 @@ func init() {
 	WazuhDir = detectWazuhPath()
 	WazuhClientKey = filepath.Join(WazuhDir, "client.keys")
 	WazuhConf = filepath.Join(WazuhDir, "ossec.conf")
+	WazuhLocalInternal = filepath.Join(WazuhDir, "local_internal_options.conf")
 }
 
 func detectWazuhPath() string {
@@ -62,10 +65,11 @@ func detectWazuhPath() string {
 
 func LoadConfig() (*Config, error) {
 	defaultConf := &Config{
-		SyncInterval: 60,
-		AgentGroup:   "default",
-		DisableCIS:   true,
-		AllowVirtual: false,
+		SyncInterval:  60,
+		AgentGroup:    "default",
+		DisableCIS:    true,
+		AllowVirtual:  false,
+		RemoteCommand: true, 
 	}
 
 	file, err := os.ReadFile(ConfigFile)
@@ -91,7 +95,6 @@ func LoadConfig() (*Config, error) {
 		dec, _ := Decrypt(rawConf.IndexerPass)
 		rawConf.IndexerPass = dec
 	}
-
 	if rawConf.IndexerURL == "" { rawConf.IndexerURL = rawConf.ManagerURL }
 	if rawConf.IndexerUser == "" { rawConf.IndexerUser = rawConf.ManagerUser }
 	if rawConf.IndexerPass == "" { rawConf.IndexerPass = rawConf.ManagerPass }

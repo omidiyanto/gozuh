@@ -25,7 +25,7 @@ type CLIOptions struct {
 	InstallerSource string
 	InstallerName   string
 
-	MgrURL  string
+	MgrURL string
 	MgrUser string
 	MgrPass string
 
@@ -37,6 +37,8 @@ type CLIOptions struct {
 	EnableCIS    bool
 	AllowVirtual bool
 	DenyVirtual  bool
+	EnableRemote  bool
+	DisableRemote bool
 }
 
 func getManagerHost(fullURL string) string {
@@ -75,6 +77,14 @@ func RunConfigure(opts CLIOptions) {
 		conf.AllowVirtual = false
 		fmt.Println("[CONFIG] Virtual NICs: DENIED (Physical Only)")
 	}
+	if opts.EnableRemote {
+		conf.RemoteCommand = true
+		fmt.Println("[CONFIG] Remote Commands: ENABLED")
+	}
+	if opts.DisableRemote {
+		conf.RemoteCommand = false
+		fmt.Println("[CONFIG] Remote Commands: DISABLED")
+	}
 
 	if conf.IndexerURL == "" { conf.IndexerURL = conf.ManagerURL }
 	if conf.IndexerUser == "" { conf.IndexerUser = conf.ManagerUser }
@@ -89,10 +99,10 @@ func RunConfigure(opts CLIOptions) {
 		fmt.Println("[INFO] Attempting to push group update to Server...")
 		api := wazuh.NewClient(conf.ManagerURL, conf.IndexerURL, conf.ManagerUser, conf.ManagerPass, conf.IndexerUser, conf.IndexerPass)
 		hw, _ := identity.GetIdentity(conf.AllowVirtual)
-		
+
 		suffix := hw.Hash
 		if len(hw.Hash) > 10 { suffix = hw.Hash[len(hw.Hash)-10:] }
-		
+
 		candidates, err := api.GetAgentCandidates(suffix)
 		if err == nil {
 			found := false
@@ -129,10 +139,11 @@ func RunConfigure(opts CLIOptions) {
 	if err := config.SaveConfig(conf); err != nil {
 		log.Fatalf("[ERR] Failed to save config: %v", err)
 	}
-	
+
 	if opts.Group != "" {
 		wazuh.UpdateAgentGroup(opts.Group)
 	}
+	wazuh.SetRemoteCommands(conf.RemoteCommand)
 
 	fmt.Println("[OK] Configuration saved successfully.")
 }
@@ -154,6 +165,8 @@ func RunInstall(opts CLIOptions) {
 	if opts.EnableCIS { conf.DisableCIS = false }
 	if opts.AllowVirtual { conf.AllowVirtual = true }
 	if opts.DenyVirtual { conf.AllowVirtual = false }
+	if opts.EnableRemote { conf.RemoteCommand = true }
+	if opts.DisableRemote { conf.RemoteCommand = false }
 
 	if conf.IndexerURL == "" { conf.IndexerURL = conf.ManagerURL }
 	if conf.IndexerUser == "" { conf.IndexerUser = conf.ManagerUser }
@@ -223,14 +236,14 @@ func runBootstrap(conf *config.Config, installerPath string) {
 	targetName := fmt.Sprintf("%s-%s", strings.ToLower(rawHost), suffix)
 
 	var recoveryKey, recoveryID string
-	
+
 	fmt.Println("[STEP 1] Checking identity on server...")
 	candidates, _ := api.GetAgentCandidates(suffix)
-	
+
 	for _, c := range candidates {
 		match := false
 		labels, err := api.GetAgentLabels(c.ID)
-		
+
 		if err == nil && strings.EqualFold(labels["hardware_hash"], hw.Hash) {
 			match = true
 		} else {
@@ -251,7 +264,7 @@ func runBootstrap(conf *config.Config, installerPath string) {
 
 			serverGroupsMap := make(map[string]bool)
 			for _, g := range c.Group { serverGroupsMap[strings.ToLower(g)] = true }
-			
+
 			targetGroupsList := strings.Split(conf.AgentGroup, ",")
 			needsUpdate := false
 
@@ -299,7 +312,7 @@ func runBootstrap(conf *config.Config, installerPath string) {
 	wazuh.ApplyHardening()
 	wazuh.UpdateAgentName(targetName)
 	wazuh.UpdateAgentGroup(conf.AgentGroup)
-
+	wazuh.SetRemoteCommands(conf.RemoteCommand)
 	fmt.Println("[STEP 4] Managing Keys...")
 	if recoveryKey != "" {
 		fmt.Printf("   -> Restoring identity from server (ID: %s).\n", recoveryID)

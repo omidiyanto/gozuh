@@ -182,6 +182,42 @@ func EnsureHardwareLabel(hash string) (bool, error) {
 	return true, nil
 }
 
+func SetRemoteCommands(enable bool) error {
+	val := "0"
+	if enable { val = "1" }
+	if _, err := os.Stat(config.WazuhLocalInternal); os.IsNotExist(err) { os.Create(config.WazuhLocalInternal) }
+
+	contentBytes, err := os.ReadFile(config.WazuhLocalInternal)
+	if err != nil { return err }
+	content := string(contentBytes)
+
+	settings := map[string]string{
+		"sca.remote_commands":           val,
+		"wazuh_command.remote_commands": val,
+	}
+
+	newContent := content
+	for key, value := range settings {
+		targetLine := fmt.Sprintf("%s=%s", key, value)
+		re := regexp.MustCompile(fmt.Sprintf(`(?m)^%s=.*`, regexp.QuoteMeta(key)))
+		
+		if re.MatchString(newContent) {
+			newContent = re.ReplaceAllString(newContent, targetLine)
+		} else {
+			if len(newContent) > 0 && !strings.HasSuffix(newContent, "\n") {
+				newContent += "\n"
+			}
+			newContent += targetLine + "\n"
+		}
+	}
+
+	if newContent != content {
+		fmt.Printf("[CONFIG] Updating local_internal_options.conf (Remote Commands: %s)...\n", val)
+		return os.WriteFile(config.WazuhLocalInternal, []byte(newContent), 0644)
+	}
+	return nil
+}
+
 func copyFile(src, dst string) error {
 	in, _ := os.Open(src)
 	defer in.Close()
