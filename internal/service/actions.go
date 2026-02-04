@@ -29,6 +29,7 @@ func (e *Executor) ExecuteDecision(d Decision, ctx *AgentContext) {
 			HardwareHash: ctx.Hardware.Hash,
 			Hostname:     ctx.TargetName,
 		})
+		wazuh.WipeLocalSyscheck()
 		wazuh.EnsureHardwareLabel(ctx.Hardware.Hash)
 		wazuh.UpdateAgentName(ctx.TargetName)
 		sys.RestartWazuhAgent()
@@ -70,6 +71,7 @@ func (e *Executor) ExecuteDecision(d Decision, ctx *AgentContext) {
 		if err := wazuh.UpdateAgentGroup(serverGroups); err != nil {
 			log.Printf("[ERR] Failed to update ossec.conf: %v", err)
 		}
+		wazuh.WipeLocalSyscheck()
 		sys.RestartWazuhAgent()
 		log.Println("[SUCCESS] Synchronization Complete (Service Restarted).")
 

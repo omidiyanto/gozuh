@@ -308,6 +308,11 @@ func runBootstrap(conf *config.Config, installerPath string) {
 	} else {
 		fmt.Println("   -> CIS Benchmarks ENABLED (Skipped disable).")
 	}
+
+	if err := wazuh.WipeLocalSyscheck(); err != nil {
+		fmt.Printf("   [WARN] Failed to apply Syscheck optimization: %v\n", err)
+	}
+	
 	wazuh.EnsureHardwareLabel(hw.Hash)
 	wazuh.ApplyHardening()
 	wazuh.UpdateAgentName(targetName)
