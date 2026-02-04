@@ -249,7 +249,6 @@ func WipeLocalSyscheck() error {
     <directories recursion_level="0" restrict="powershell.exe$">%WINDIR%\System32\WindowsPowerShell\v1.0</directories>
     <directories recursion_level="0" restrict="winrm.vbs$">%WINDIR%\System32</directories>
     <directories realtime="yes">%PROGRAMDATA%\Microsoft\Windows\Start Menu\Programs\Startup</directories>
-    <directories check_all="yes" report_changes="yes" realtime="yes">C:\harden\exclusions.txt</directories>
     <ignore>%PROGRAMDATA%\Microsoft\Windows\Start Menu\Programs\Startup\desktop.ini</ignore>
     <ignore type="sregex">.log$|.htm$|.jpg$|.png$|.chm$|.pnf$|.evtx$</ignore>
     <windows_audit_interval>60</windows_audit_interval>
