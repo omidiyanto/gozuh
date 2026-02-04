@@ -194,6 +194,7 @@ func SetRemoteCommands(enable bool) error {
 	settings := map[string]string{
 		"sca.remote_commands":           val,
 		"wazuh_command.remote_commands": val,
+		"logcollector.remote_commands": val,
 	}
 
 	newContent := content
