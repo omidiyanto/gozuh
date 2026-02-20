@@ -189,6 +189,13 @@ func RunInstall(opts CLIOptions) {
 	if opts.EnableRemote { conf.RemoteCommand = true }
 	if opts.DisableRemote { conf.RemoteCommand = false }
 
+	if opts.Interval >= 10 {
+		conf.SyncInterval = opts.Interval
+		fmt.Printf("[CONFIG] Sync Interval updated to: %d seconds\n", opts.Interval)
+	} else if opts.Interval > 0 && opts.Interval < 10 {
+		fmt.Println("[WARN] Sync Interval minimum is 10 seconds. Ignoring interval update.")
+	}
+
 	if conf.IndexerURL == "" { conf.IndexerURL = conf.ManagerURL }
 	if conf.IndexerUser == "" { conf.IndexerUser = conf.ManagerUser }
 	if conf.IndexerPass == "" { conf.IndexerPass = conf.ManagerPass }
