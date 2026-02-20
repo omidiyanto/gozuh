@@ -33,6 +33,7 @@ func main() {
 	flag.BoolVar(&opts.DenyVirtual, "deny-virtual", false, "Toggle: Disable Virtual NIC Support (Physical Only)")
 	flag.BoolVar(&opts.EnableRemote, "enable-remote-command", false, "Set remote_commands=1 (Default: true if not specified)")
 	flag.BoolVar(&opts.DisableRemote, "disable-remote-command", false, "Set remote_commands=0")
+	flag.IntVar(&opts.Interval, "interval", 0, "")
 
 	debug := flag.Bool("debug", false, "Run Diagnostics & Identity Check")
 	purge := flag.Bool("purge", false, "Full Decommission (Remove from Server & Local)")
@@ -129,6 +130,7 @@ USAGE:
     OPTIONAL FLAGS:
       --group     : Agent Group (Default: default)
       --idx-url   : Indexer URL (if different from Manager)
+	  --interval  : Watchdog sync interval in seconds (Default: 60, Min: 10)
       --allow-virtual : Enable support for Virtual Machines (Hyper-V/VMware)
       --disable-remote-command : Block server from executing remote commands.
 	  --enable-remote-command : Allow server to execute remote commands (Default).
