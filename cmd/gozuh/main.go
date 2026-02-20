@@ -40,6 +40,8 @@ func main() {
 	stop := flag.Bool("stop", false, "Stop Gozuh & Wazuh Services")
 	restart := flag.Bool("restart", false, "Restart Gozuh & Wazuh Services")
 	help := flag.Bool("help", false, "Show this help guide")
+	alert := flag.Bool("alert", false, "Pop a test Security Alert Notification on active Desktop")
+	alertWorker := flag.Bool("alert-worker", false, "")
 
 	flag.Usage = func() {
 		printBanner()
@@ -57,6 +59,14 @@ func main() {
 	}
 	if *debug {
 		service.RunDebug()
+		return
+	}
+	if *alertWorker {
+		service.RunAlertWorker()
+		return
+	}
+	if *alert {
+		service.RunAlert()
 		return
 	}
 	if *purge {
@@ -140,6 +150,7 @@ USAGE:
  3. UTILITY COMMANDS
     --version     : Show Gozuh version
     --debug       : Show Hardware Identity (UUID, Serial, MAC Hash) & API Status
+    --alert       : Show Security Alert Notification Pop-up on active Desktop
     --stop        : Stop Gozuh & Wazuh services safely
     --restart     : Restart services (Triggers Watchdog)
     --uninstall   : Remove Service & Uninstall Agent (Keep Config)

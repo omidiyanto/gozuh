@@ -3,7 +3,9 @@ package sys
 import (
 	"fmt"
 	"os"
+	"syscall"
 	"time"
+	"unsafe"
 	"gozuh/internal/config"
 	"golang.org/x/sys/windows/svc"
 	"golang.org/x/sys/windows/svc/mgr"
@@ -132,4 +134,63 @@ func RemoveGozuhService() error {
 
 	s.Control(svc.Stop)
 	return s.Delete()
+}
+func CheckAlertMutex() bool {
+	kernel32 := syscall.NewLazyDLL("kernel32.dll")
+	createMutex := kernel32.NewProc("CreateMutexW")
+	closeHandle := kernel32.NewProc("CloseHandle")
+
+	mName, _ := syscall.UTF16PtrFromString("Global\\GozuhSecurityAlert")
+	handle, _, errCode := createMutex.Call(0, 0, uintptr(unsafe.Pointer(mName)))
+
+	if handle != 0 {
+		closeHandle.Call(handle)
+	}
+
+	return errCode == syscall.Errno(183)
+}
+
+func ShowAlertWorker(title, message string) {
+	kernel32 := syscall.NewLazyDLL("kernel32.dll")
+	createMutex := kernel32.NewProc("CreateMutexW")
+	closeHandle := kernel32.NewProc("CloseHandle")
+
+	mName, _ := syscall.UTF16PtrFromString("Global\\GozuhSecurityAlert")
+	handle, _, errCode := createMutex.Call(0, 0, uintptr(unsafe.Pointer(mName)))
+
+	if handle == 0 || errCode == syscall.Errno(183) {
+		if handle != 0 {
+			closeHandle.Call(handle)
+		}
+		return
+	}
+	defer closeHandle.Call(handle)
+
+	ShowMessageBox(title, message)
+}
+
+func ShowMessageBox(title, message string) error {
+	user32 := syscall.NewLazyDLL("user32.dll")
+	messageBox := user32.NewProc("MessageBoxW")
+
+	tPtr, _ := syscall.UTF16PtrFromString(title)
+	mPtr, _ := syscall.UTF16PtrFromString(message)
+
+	const MB_SERVICE_NOTIFICATION = 0x00200000
+	const MB_ICONWARNING = 0x00000030
+	const MB_OK = 0x00000000
+
+	style := uintptr(MB_OK | MB_ICONWARNING | MB_SERVICE_NOTIFICATION)
+
+	ret, _, err := messageBox.Call(
+		0,
+		uintptr(unsafe.Pointer(mPtr)),
+		uintptr(unsafe.Pointer(tPtr)),
+		style,
+	)
+
+	if ret == 0 && err != nil {
+		return err
+	}
+	return nil
 }
