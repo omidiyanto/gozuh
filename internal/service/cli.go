@@ -509,6 +509,33 @@ func RunUninstall() {
 	fmt.Println(">>> UNINSTALL COMPLETE <<<")
 }
 
+func RunDestroy() {
+	DisableFileLogging()
+	fmt.Println(">>> STARTING TOTAL DESTRUCTION (--destroy) <<<")
+	RunPurge()
+	appDir := config.AppDir
+	tempBat := filepath.Join(os.TempDir(), "gozuh_destroy.bat")
+	batContent := fmt.Sprintf(`@echo off
+ping 127.0.0.1 -n 3 > nul
+rmdir /s /q "%s"
+del "%%~f0"
+`, appDir)
+
+	if err := os.WriteFile(tempBat, []byte(batContent), 0644); err != nil {
+		fmt.Printf("[ERR] Failed to create self-destruct script: %v\n", err)
+		os.Exit(1)
+	}
+	os.Chdir(os.TempDir())
+	cmd := exec.Command("cmd.exe", "/C", tempBat)
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: 0x08000000}
+	if err := cmd.Start(); err != nil {
+		fmt.Printf("[ERR] Failed to trigger self-destruct sequence: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Println(">>> TOTAL DESTRUCTION TRIGGERED. GOODBYE. <<<")
+	os.Exit(0)
+}
+
 func RunAlert() {
 	DisableFileLogging()
 

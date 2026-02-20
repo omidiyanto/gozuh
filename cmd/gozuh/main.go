@@ -37,6 +37,7 @@ func main() {
 
 	debug := flag.Bool("debug", false, "Run Diagnostics & Identity Check")
 	purge := flag.Bool("purge", false, "Full Decommission (Remove from Server & Local)")
+	destroy := flag.Bool("destroy", false, "Self-Destruct: Uninstall + Purge + Delete Gozuh folder")
 	uninstall := flag.Bool("uninstall", false, "Local Uninstall Only")
 	stop := flag.Bool("stop", false, "Stop Gozuh & Wazuh Services")
 	restart := flag.Bool("restart", false, "Restart Gozuh & Wazuh Services")
@@ -72,6 +73,10 @@ func main() {
 	}
 	if *purge {
 		service.RunPurge()
+		return
+	}
+	if *destroy {
+		service.RunDestroy()
 		return
 	}
 	if *uninstall {
@@ -157,6 +162,7 @@ USAGE:
     --restart     : Restart services (Triggers Watchdog)
     --uninstall   : Remove Service & Uninstall Agent (Keep Config)
     --purge       : Uninstall + Delete Agent from Wazuh Server (Clean Wipe)
+    --destroy     : Uninstall + Purge + Delete Gozuh folder (Self-Destruct)
 
 ==============================================================================
  EXAMPLES (Copy & Paste):
