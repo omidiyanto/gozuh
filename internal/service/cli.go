@@ -16,6 +16,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -34,12 +35,13 @@ type CLIOptions struct {
 	IdxUser string
 	IdxPass string
 
-	Group        string
-	EnableCIS    bool
-	AllowVirtual bool
-	DenyVirtual  bool
+	Group         string
+	EnableCIS     bool
+	AllowVirtual  bool
+	DenyVirtual   bool
 	EnableRemote  bool
 	DisableRemote bool
+	Interval      int
 }
 
 func getManagerHost(fullURL string) string {
@@ -68,6 +70,18 @@ func RunConfigure(opts CLIOptions) {
 	if opts.Group != "" { conf.AgentGroup = opts.Group }
 	if opts.InstallerName != "" { conf.InstallerName = opts.InstallerName }
 
+	intervalChanged := false
+	if opts.Interval >= 10 {
+		if conf.SyncInterval != opts.Interval {
+			conf.SyncInterval = opts.Interval
+			fmt.Printf("[CONFIG] Sync Interval updated to: %d seconds\n", opts.Interval)
+			intervalChanged = true
+		} else {
+			fmt.Printf("[INFO] Sync Interval is already %d seconds. No restart needed.\n", opts.Interval)
+		}
+	} else if opts.Interval > 0 && opts.Interval < 10 {
+		fmt.Println("[WARN] Sync Interval minimum is 10 seconds. Ignoring interval update.")
+	}
 	if opts.EnableCIS { conf.DisableCIS = false }
 
 	if opts.AllowVirtual {
@@ -147,6 +161,13 @@ func RunConfigure(opts CLIOptions) {
 	wazuh.SetRemoteCommands(conf.RemoteCommand)
 
 	fmt.Println("[OK] Configuration saved successfully.")
+
+	if intervalChanged {
+		if sys.GetServiceStatus(config.GozuhService) == "RUNNING" {
+			fmt.Println("[INFO] Restarting Gozuh service to apply new interval immediately...")
+			sys.RestartGozuhService()
+		}
+	}
 }
 
 func RunInstall(opts CLIOptions) {
