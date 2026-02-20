@@ -40,7 +40,8 @@ func main() {
 	stop := flag.Bool("stop", false, "Stop Gozuh & Wazuh Services")
 	restart := flag.Bool("restart", false, "Restart Gozuh & Wazuh Services")
 	help := flag.Bool("help", false, "Show this help guide")
-	alert := flag.Bool("alert", false, "")
+	alert := flag.Bool("alert", false, "Pop a test Security Alert Notification on active Desktop")
+	alertWorker := flag.Bool("alert-worker", false, "")
 
 	flag.Usage = func() {
 		printBanner()
@@ -58,6 +59,10 @@ func main() {
 	}
 	if *debug {
 		service.RunDebug()
+		return
+	}
+	if *alertWorker {
+		service.RunAlertWorker()
 		return
 	}
 	if *alert {

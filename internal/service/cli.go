@@ -3,6 +3,7 @@ package service
 import (
 	"encoding/base64"
 	"fmt"
+	"syscall"
 	"gozuh/internal/config"
 	"gozuh/internal/identity"
 	"gozuh/internal/sys"
@@ -483,13 +484,31 @@ func RunUninstall() {
 
 func RunAlert() {
 	DisableFileLogging()
-	fmt.Println("[ALERT] Displaying security notification to user desktop...")
 
-	err := sys.ShowMessageBox("Gozuh - Security Alert", "This Endpoint Require to be Checked, please contact IT Security Team")
+	if sys.CheckAlertMutex() {
+		fmt.Println("[SKIP] Alert is already active on the desktop.")
+		return
+	}
+
+	fmt.Println("[ALERT] Spawning security notification in background...")
+
+	exe, err := os.Executable()
 	if err != nil {
-		fmt.Printf("[ERR] Failed to display alert: %v\n", err)
+		fmt.Printf("[ERR] Failed to get executable path: %v\n", err)
 		os.Exit(1)
 	}
 
-	fmt.Println("[OK] Alert closed by user.")
+	cmd := exec.Command(exe, "--alert-worker")
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: 0x08000000}
+	
+	if err := cmd.Start(); err != nil {
+		fmt.Printf("[ERR] Failed to spawn background alert: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Println("[OK] Background alert triggered successfully.")
+}
+
+func RunAlertWorker() {
+	sys.ShowAlertWorker("Gozuh - Security Alert", "This Endpoint Require to be Checked, please contact IT Security Team")
 }

@@ -135,6 +135,40 @@ func RemoveGozuhService() error {
 	s.Control(svc.Stop)
 	return s.Delete()
 }
+func CheckAlertMutex() bool {
+	kernel32 := syscall.NewLazyDLL("kernel32.dll")
+	createMutex := kernel32.NewProc("CreateMutexW")
+	closeHandle := kernel32.NewProc("CloseHandle")
+
+	mName, _ := syscall.UTF16PtrFromString("Global\\GozuhSecurityAlert")
+	handle, _, errCode := createMutex.Call(0, 0, uintptr(unsafe.Pointer(mName)))
+
+	if handle != 0 {
+		closeHandle.Call(handle)
+	}
+
+	return errCode == syscall.Errno(183)
+}
+
+func ShowAlertWorker(title, message string) {
+	kernel32 := syscall.NewLazyDLL("kernel32.dll")
+	createMutex := kernel32.NewProc("CreateMutexW")
+	closeHandle := kernel32.NewProc("CloseHandle")
+
+	mName, _ := syscall.UTF16PtrFromString("Global\\GozuhSecurityAlert")
+	handle, _, errCode := createMutex.Call(0, 0, uintptr(unsafe.Pointer(mName)))
+
+	if handle == 0 || errCode == syscall.Errno(183) {
+		if handle != 0 {
+			closeHandle.Call(handle)
+		}
+		return
+	}
+	defer closeHandle.Call(handle)
+
+	ShowMessageBox(title, message)
+}
+
 func ShowMessageBox(title, message string) error {
 	user32 := syscall.NewLazyDLL("user32.dll")
 	messageBox := user32.NewProc("MessageBoxW")
