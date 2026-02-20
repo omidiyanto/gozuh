@@ -480,3 +480,16 @@ func RunUninstall() {
 	os.Remove(config.StateFile)
 	fmt.Println(">>> UNINSTALL COMPLETE <<<")
 }
+
+func RunAlert() {
+	DisableFileLogging()
+	fmt.Println("[ALERT] Displaying security notification to user desktop...")
+
+	err := sys.ShowMessageBox("Gozuh - Security Alert", "This Endpoint Require to be Checked, please contact IT Security Team")
+	if err != nil {
+		fmt.Printf("[ERR] Failed to display alert: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Println("[OK] Alert closed by user.")
+}
