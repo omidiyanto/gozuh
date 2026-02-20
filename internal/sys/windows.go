@@ -149,48 +149,77 @@ func CheckAlertMutex() bool {
 
 	return errCode == syscall.Errno(183)
 }
+func ShowMessageBox(title, message string) error {
+	wtsapi32 := syscall.NewLazyDLL("wtsapi32.dll")
+	wtsSendMessage := wtsapi32.NewProc("WTSSendMessageW")
+	wtsEnumerateSessions := wtsapi32.NewProc("WTSEnumerateSessionsW")
+	wtsFreeMemory := wtsapi32.NewProc("WTSFreeMemory")
+	type WTS_SESSION_INFO struct {
+		SessionID       uint32
+		pWinStationName uintptr
+		State           uint32
+	}
+	var pSessionInfo uintptr
+	var count uint32
+	ret, _, _ := wtsEnumerateSessions.Call(0, 0, 1, uintptr(unsafe.Pointer(&pSessionInfo)), uintptr(unsafe.Pointer(&count)))
+	if ret == 0 {
+		return fmt.Errorf("gagal enumerate sessions")
+	}
+	defer wtsFreeMemory.Call(pSessionInfo)
+	sessions := (*[1 << 20]WTS_SESSION_INFO)(unsafe.Pointer(pSessionInfo))[:count:count]
+	activeSessionID := uint32(0xFFFFFFFF)
+	for _, s := range sessions {
+		if s.State == 0 {
+			activeSessionID = s.SessionID
+			break
+		}
+	}
+	if activeSessionID == 0xFFFFFFFF {
+		return fmt.Errorf("No Active Session Found")
+	}
+	tPtr, _ := syscall.UTF16PtrFromString(title)
+	mPtr, _ := syscall.UTF16PtrFromString(message)
+	tLen := uintptr(len(title) * 2)
+	mLen := uintptr(len(message) * 2)
+	const MB_OK = 0x00000000
+	const MB_ICONWARNING = 0x00000030
+	style := uintptr(MB_OK | MB_ICONWARNING)
+	var response uint32
+	ret, _, err := wtsSendMessage.Call(
+		0, 
+		uintptr(activeSessionID),
+		uintptr(unsafe.Pointer(tPtr)),
+		tLen,
+		uintptr(unsafe.Pointer(mPtr)),
+		mLen,
+		style,
+		0, 
+		uintptr(unsafe.Pointer(&response)),
+		1,
+	)
+
+	if ret == 0 {
+		return fmt.Errorf("WTSSendMessage gagal: %v", err)
+	}
+	return nil
+}
 
 func ShowAlertWorker(title, message string) {
 	kernel32 := syscall.NewLazyDLL("kernel32.dll")
 	createMutex := kernel32.NewProc("CreateMutexW")
 	closeHandle := kernel32.NewProc("CloseHandle")
-
-	mName, _ := syscall.UTF16PtrFromString("Global\\GozuhSecurityAlert")
+	mName, _ := syscall.UTF16PtrFromString("Global\\GozuhSecurityAlertMutex")
 	handle, _, errCode := createMutex.Call(0, 0, uintptr(unsafe.Pointer(mName)))
-
-	if handle == 0 || errCode == syscall.Errno(183) {
+	if errCode == syscall.Errno(183) {
 		if handle != 0 {
 			closeHandle.Call(handle)
 		}
 		return
 	}
-	defer closeHandle.Call(handle)
-
-	ShowMessageBox(title, message)
-}
-
-func ShowMessageBox(title, message string) error {
-	user32 := syscall.NewLazyDLL("user32.dll")
-	messageBox := user32.NewProc("MessageBoxW")
-
-	tPtr, _ := syscall.UTF16PtrFromString(title)
-	mPtr, _ := syscall.UTF16PtrFromString(message)
-
-	const MB_SERVICE_NOTIFICATION = 0x00200000
-	const MB_ICONWARNING = 0x00000030
-	const MB_OK = 0x00000000
-
-	style := uintptr(MB_OK | MB_ICONWARNING | MB_SERVICE_NOTIFICATION)
-
-	ret, _, err := messageBox.Call(
-		0,
-		uintptr(unsafe.Pointer(mPtr)),
-		uintptr(unsafe.Pointer(tPtr)),
-		style,
-	)
-
-	if ret == 0 && err != nil {
-		return err
+	
+	if handle == 0 {
+		return
 	}
-	return nil
+	defer closeHandle.Call(handle)
+	ShowMessageBox(title, message)
 }
