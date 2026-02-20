@@ -140,7 +140,7 @@ func CheckAlertMutex() bool {
 	createMutex := kernel32.NewProc("CreateMutexW")
 	closeHandle := kernel32.NewProc("CloseHandle")
 
-	mName, _ := syscall.UTF16PtrFromString("Global\\GozuhSecurityAlert")
+	mName, _ := syscall.UTF16PtrFromString("Global\\GozuhSecurityAlertMutex")
 	handle, _, errCode := createMutex.Call(0, 0, uintptr(unsafe.Pointer(mName)))
 
 	if handle != 0 {
