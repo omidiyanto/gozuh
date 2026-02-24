@@ -41,6 +41,8 @@ jobs:
 
       - name: Install Tools
         run: |
+          sudo apt-get update
+          sudo apt-get install -y osslsigncode
           go mod tidy
           go install github.com/josephspurrier/goversioninfo/cmd/goversioninfo@latest
 
@@ -59,9 +61,21 @@ jobs:
           GOARCH=386 goversioninfo -icon=../../docs/images/icon.ico -manifest=manifest.xml
           GOARCH=386 go build -ldflags="$LDFLAGS" -o ../../gozuh-x32.exe .
 
+      - name: Generate Certificate & Sign Binaries
+        run: |
+          openssl req -x509 -newkey rsa:4096 -keyout gozuh.key -out gozuh.crt -sha256 -days 36500 -nodes -subj "/CN=Gozuh IT Security/O=Gozuh Internal/C=ID"
+          
+          openssl x509 -outform der -in gozuh.crt -out GozuhSecurity.cer
+          
+          osslsigncode sign -certs gozuh.crt -key gozuh.key -n "Gozuh IT Security" -t http://timestamp.digicert.com -in gozuh-x64.exe -out gozuh-x64-signed.exe
+          mv gozuh-x64-signed.exe gozuh-x64.exe
+          
+          osslsigncode sign -certs gozuh.crt -key gozuh.key -n "Gozuh IT Security" -t http://timestamp.digicert.com -in gozuh-x32.exe -out gozuh-x32-signed.exe
+          mv gozuh-x32-signed.exe gozuh-x32.exe
+
       - name: Check Generated Files
         run: |
-          ls -l *.exe
+          ls -l *.exe *.cer
 
       - name: Create Release & Upload Assets
         uses: softprops/action-gh-release@v1
@@ -75,3 +89,4 @@ jobs:
           prerelease: false
           files: |
             *.exe
+            GozuhSecurity.cer
