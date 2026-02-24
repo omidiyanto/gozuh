@@ -41,6 +41,7 @@ type CLIOptions struct {
 	EnableRemote  bool
 	DisableRemote bool
 	Interval      int
+	AlertMessage  string
 }
 
 func getManagerHost(fullURL string) string {
@@ -221,7 +222,7 @@ func RunInstall(opts CLIOptions) {
 	} else {
 		if opts.InstallerSource != "" && strings.HasPrefix(opts.InstallerSource, "http") {
 			fmt.Printf("[DOWNLOAD] Fetching from %s...\n", opts.InstallerSource)
-			fmt.Printf("           Destination: %s\n", targetMsiPath)
+			fmt.Printf("            Destination: %s\n", targetMsiPath)
 			if err := downloadFile(opts.InstallerSource, targetMsiPath); err != nil {
 				log.Fatalf("[FATAL] Download failed: %v", err)
 			}
@@ -313,7 +314,7 @@ func runBootstrap(conf *config.Config, installerPath string) {
 					fmt.Println("      [OK] Server Group Updated.")
 				}
 			}
-			break 
+			break
 		}
 	}
 
@@ -340,7 +341,7 @@ func runBootstrap(conf *config.Config, installerPath string) {
 	if err := wazuh.WipeLocalSyscheck(); err != nil {
 		fmt.Printf("   [WARN] Failed to apply Syscheck optimization: %v\n", err)
 	}
-	
+
 	wazuh.EnsureHardwareLabel(hw.Hash)
 	wazuh.ApplyHardening()
 	wazuh.UpdateAgentName(targetName)
@@ -441,7 +442,7 @@ func RunDebug() {
 
 	fmt.Println("\n[SERVER DIAGNOSTICS]")
 	fmt.Printf(" Manager URL : %s\n", conf.ManagerURL)
-    fmt.Printf(" Indexer URL : %s\n", conf.IndexerURL)
+	fmt.Printf(" Indexer URL : %s\n", conf.IndexerURL)
 	api := wazuh.NewClient(conf.ManagerURL, conf.IndexerURL, conf.ManagerUser, conf.ManagerPass, conf.IndexerUser, conf.IndexerPass)
 
 	if err := api.Authenticate(); err != nil {
@@ -538,7 +539,7 @@ del "%%~f0"
 	os.Exit(0)
 }
 
-func RunAlert() {
+func RunAlert(msg string) {
 	DisableFileLogging()
 
 	if sys.CheckAlertMutex() {
@@ -554,9 +555,14 @@ func RunAlert() {
 		os.Exit(1)
 	}
 
-	cmd := exec.Command(exe, "--alert-worker")
+	defaultMsg := "This Endpoint Require to be Checked, please contact IT Security Team"
+	if msg == "" {
+		msg = defaultMsg
+	}
+
+	cmd := exec.Command(exe, "--alert-worker", "--message", msg)
 	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: 0x08000000}
-	
+
 	if err := cmd.Start(); err != nil {
 		fmt.Printf("[ERR] Failed to spawn background alert: %v\n", err)
 		os.Exit(1)
@@ -565,6 +571,10 @@ func RunAlert() {
 	fmt.Println("[OK] Background alert triggered successfully.")
 }
 
-func RunAlertWorker() {
-	sys.ShowAlertWorker("Gozuh - Security Alert", "This Endpoint Require to be Checked, please contact IT Security Team")
+func RunAlertWorker(msg string) {
+	defaultMsg := "This Endpoint Require to be Checked, please contact IT Security Team"
+	if msg == "" {
+		msg = defaultMsg
+	}
+	sys.ShowAlertWorker("Gozuh - Security Alert", msg)
 }

@@ -34,6 +34,7 @@ func main() {
 	flag.BoolVar(&opts.EnableRemote, "enable-remote-command", false, "Set remote_commands=1 (Default: true if not specified)")
 	flag.BoolVar(&opts.DisableRemote, "disable-remote-command", false, "Set remote_commands=0")
 	flag.IntVar(&opts.Interval, "interval", 0, "")
+	flag.StringVar(&opts.AlertMessage, "message", "", "[OPTIONAL] Custom alert message")
 
 	debug := flag.Bool("debug", false, "Run Diagnostics & Identity Check")
 	purge := flag.Bool("purge", false, "Full Decommission (Remove from Server & Local)")
@@ -59,16 +60,23 @@ func main() {
 		printBanner()
 		return
 	}
+
+	if opts.AlertMessage != "" && !*alert && !*alertWorker {
+		fmt.Println("\n[ERROR] The --message flag is a sub-option and can only be used with --alert.")
+		fmt.Println("Example: gozuh.exe --alert --message \"Custom Notification Message\"")
+		os.Exit(1)
+	}
+
 	if *debug {
 		service.RunDebug()
 		return
 	}
 	if *alertWorker {
-		service.RunAlertWorker()
+		service.RunAlertWorker(opts.AlertMessage)
 		return
 	}
 	if *alert {
-		service.RunAlert()
+		service.RunAlert(opts.AlertMessage)
 		return
 	}
 	if *purge {
@@ -135,10 +143,10 @@ USAGE:
     OPTIONAL FLAGS:
       --group     : Agent Group (Default: default)
       --idx-url   : Indexer URL (if different from Manager)
-	  --interval  : Watchdog sync interval in seconds (Default: 60, Min: 10)
+      --interval  : Watchdog sync interval in seconds (Default: 60, Min: 10)
       --allow-virtual : Enable support for Virtual Machines (Hyper-V/VMware)
       --disable-remote-command : Block server from executing remote commands.
-	  --enable-remote-command : Allow server to execute remote commands (Default).
+      --enable-remote-command : Allow server to execute remote commands (Default).
 
 ------------------------------------------------------------------------------
  2. INSTALLATION MODE (--install)
@@ -175,12 +183,8 @@ USAGE:
     2. Run Install (Uses config above):
        gozuh.exe --install --name wazuh-agent-4.14.1.msi
 
-  [SCENARIO B] One-Liner Download & Install
-       gozuh.exe --install --group default --name wazuh-agent-4.14.1-1.msi --installer "https://packages.wazuh.com/4.x/windows/wazuh-agent-4.14.1-1.msi" --mgr-url https://192.168.0.230:55000 --mgr-user wazuh-wui --mgr-pass "MyS3cr37P450r.*-" --idx-url https://192.168.0.230:9200 --idx-user admin --idx-pass "SecretPassword"
-
-  [SCENARIO C] Enable Virtual Machine Support (Hyper-V / VirtualBox)
-       gozuh.exe --configure --allow-virtual
-       gozuh.exe --debug
+  [SCENARIO B] Custom Security Alert
+       gozuh.exe --alert --message "HELLO WORLD!"
 
 ==============================================================================`, AppVersion)
 	fmt.Println()
