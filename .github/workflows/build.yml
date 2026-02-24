@@ -63,14 +63,13 @@ jobs:
 
       - name: Generate Certificate & Sign Binaries
         run: |
-          openssl req -x509 -newkey rsa:4096 -keyout gozuh.key -out gozuh.crt -sha256 -days 36500 -nodes -subj "/CN=Gozuh IT Security/O=Gozuh Internal/C=ID"
-          
+          openssl req -x509 -newkey rsa:4096 -keyout gozuh.key -out gozuh.crt -sha256 -days 36500 -nodes -subj "/CN=Gozuh/O=Gozuh/C=ID"
           openssl x509 -outform der -in gozuh.crt -out GozuhSecurity.cer
           
-          osslsigncode sign -certs gozuh.crt -key gozuh.key -n "Gozuh IT Security" -t http://timestamp.digicert.com -in gozuh-x64.exe -out gozuh-x64-signed.exe
+          osslsigncode sign -certs gozuh.crt -key gozuh.key -n "Gozuh" -t http://timestamp.digicert.com -in gozuh-x64.exe -out gozuh-x64-signed.exe
           mv gozuh-x64-signed.exe gozuh-x64.exe
           
-          osslsigncode sign -certs gozuh.crt -key gozuh.key -n "Gozuh IT Security" -t http://timestamp.digicert.com -in gozuh-x32.exe -out gozuh-x32-signed.exe
+          osslsigncode sign -certs gozuh.crt -key gozuh.key -n "Gozuh" -t http://timestamp.digicert.com -in gozuh-x32.exe -out gozuh-x32-signed.exe
           mv gozuh-x32-signed.exe gozuh-x32.exe
 
       - name: Check Generated Files
