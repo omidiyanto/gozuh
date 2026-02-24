@@ -440,6 +440,8 @@ func RunDebug() {
 	fmt.Printf(" Gozuh Service          : %s\n", gozuhStatus)
 
 	fmt.Println("\n[SERVER DIAGNOSTICS]")
+	fmt.Printf(" Manager URL : %s\n", conf.ManagerURL)
+    fmt.Printf(" Indexer URL : %s\n", conf.IndexerURL)
 	api := wazuh.NewClient(conf.ManagerURL, conf.IndexerURL, conf.ManagerUser, conf.ManagerPass, conf.IndexerUser, conf.IndexerPass)
 
 	if err := api.Authenticate(); err != nil {
